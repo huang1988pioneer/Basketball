@@ -4,3 +4,6 @@
 
 artifacts/*
 !artifacts/basketball-final-game.png
+
+build/
+dist/
