@@ -10,22 +10,26 @@
     />
     <title>喵萌籃球大作戰 · 2D Street Hoops</title>
     <link rel="stylesheet" href="styles.css" />
+    <link rel="icon" type="image/png" href="assets/generated-app-icon-v2.png" />
   </head>
   <body>
     <div class="app-shell">
       <div class="ambient ambient-one"></div>
       <div class="ambient ambient-two"></div>
+      <div class="interface-frame-art" aria-hidden="true">
+        <img src="assets/generated-ui-frame-v2.png" alt="" />
+      </div>
 
       <header class="topbar">
         <a class="brand" href="#top" aria-label="回到首頁">
-          <span class="brand-badge" aria-hidden="true"><img src="assets/generated-title-emblem.png" alt="" /></span>
+          <span class="brand-badge" aria-hidden="true"><img src="assets/generated-app-icon-v2.png" alt="" /></span>
           <span class="brand-copy">
             <strong>喵萌籃球大作戰</strong>
             <small>2D STREET HOOPS · PLAYABLE PROTOTYPE</small>
           </span>
         </a>
         <div class="topbar-actions">
-          <div class="live-pill"><i></i> 遊戲原型 v0.1</div>
+          <div class="live-pill"><i></i> 遊戲原型 v0.2</div>
           <button class="icon-button" id="soundToggle" type="button" aria-label="切換音效" aria-pressed="true">
             <span class="sound-on">🔊</span><span class="sound-off">🔇</span>
           </button>
@@ -44,8 +48,8 @@
 
               <div class="scoreboard" aria-live="polite">
                 <div class="team-score team-score-blue">
-                  <div class="team-avatar avatar-blue"><img src="assets/generated-white-cat.png" alt="" /></div>
-                  <div class="team-meta"><span>P1 · 喵白白</span><small>BLUE PAWS</small></div>
+                  <div class="team-avatar avatar-blue"><img id="playerAvatar" src="assets/generated-white-cat.png" alt="喵白白" /></div>
+                  <div class="team-meta"><span id="playerName">P1 · 喵白白</span><small id="playerTeam">BLUE PAWS</small></div>
                   <strong id="playerScore">00</strong>
                 </div>
                 <div class="scoreboard-center">
@@ -55,8 +59,8 @@
                 </div>
                 <div class="team-score team-score-red">
                   <strong id="opponentScore">00</strong>
-                  <div class="team-meta team-meta-right"><span>P2 · 喵布布</span><small>RED CLAWS</small></div>
-                  <div class="team-avatar avatar-red"><img src="assets/generated-calico-cat.png" alt="" /></div>
+                  <div class="team-meta team-meta-right"><span id="opponentName">P2 · 喵布布</span><small id="opponentTeam">RED CLAWS</small></div>
+                  <div class="team-avatar avatar-red"><img id="opponentAvatar" src="assets/generated-calico-cat.png" alt="喵布布" /></div>
                 </div>
               </div>
 
@@ -83,7 +87,7 @@
                   </div>
                 </div>
 
-                <div class="desktop-hint"><kbd>WASD</kbd> 移動　 <kbd>Space</kbd> 蓄力投籃　 <kbd>Shift</kbd> 衝刺</div>
+                <div class="desktop-hint" id="desktopHint"><kbd>WASD</kbd> 移動　 <kbd>Space</kbd> 蓄力投籃　 <kbd>Shift</kbd> 衝刺</div>
               </div>
 
               <div class="game-card-footer">
@@ -126,7 +130,7 @@
 
             <section class="panel glass-card status-panel">
               <div class="status-top"><div><span class="panel-kicker">LIVE</span><h2>球員狀態</h2></div><span class="possession-pill" id="possessionPill">P1 持球</span></div>
-              <div class="status-player"><div class="mini-avatar mini-blue"><img src="assets/generated-white-cat.png" alt="" /></div><div class="status-player-info"><strong>喵白白</strong><span>控球後衛 · Lv. 5</span></div><div class="energy-orb"><span id="energyValue">68</span><small>ENERGY</small></div></div>
+              <div class="status-player"><div class="mini-avatar mini-blue"><img id="playerStatusAvatar" src="assets/generated-white-cat.png" alt="喵白白" /></div><div class="status-player-info"><strong id="statusPlayerName">喵白白</strong><span id="statusPlayerRole">控球後衛 · Lv. 5</span></div><div class="energy-orb"><span id="energyValue">68</span><small>ENERGY</small></div></div>
               <div class="status-bars">
                 <div class="status-bar-row"><span>體力</span><div class="bar"><i id="staminaBar" style="width:86%"></i></div><b id="staminaText">86/100</b></div>
                 <div class="status-bar-row"><span>必殺</span><div class="bar bar-energy"><i id="energyBar" style="width:68%"></i></div><b id="energyText">68%</b></div>
@@ -140,11 +144,13 @@
             <div class="panel-heading"><span class="panel-kicker">03</span><h2>角色設定</h2><span class="heading-line"></span><button class="text-button" type="button">查看全部　›</button></div>
             <div class="character-content">
               <div class="character-tabs" role="tablist" aria-label="選擇角色">
-                <button class="character-tab active" data-character="white" type="button"><span class="character-portrait portrait-white">🐱</span><span><b>喵白白</b><small>控球型</small></span></button>
-                <button class="character-tab" data-character="calico" type="button"><span class="character-portrait portrait-calico">🐈</span><span><b>喵布布</b><small>進攻型</small></span></button>
+                <button class="character-tab active" data-character="white" type="button"><span class="character-portrait portrait-white"><img src="assets/generated-white-cat.png" alt="" /></span><span><b>喵白白</b><small>控球型</small></span></button>
+                <button class="character-tab" data-character="calico" type="button"><span class="character-portrait portrait-calico"><img src="assets/generated-calico-cat.png" alt="" /></span><span><b>喵布布</b><small>進攻型</small></span></button>
+                <button class="character-tab" data-character="orange" type="button"><span class="character-portrait portrait-orange"><img src="assets/generated-orange-cat-v2.png" alt="" /></span><span><b>喵橘橘</b><small>敏捷型</small></span></button>
+                <button class="character-tab" data-character="boss" type="button"><span class="character-portrait portrait-boss"><img src="assets/generated-boss-cat-v2.png" alt="" /></span><span><b>喵霸霸</b><small>Boss 型</small></span></button>
               </div>
-              <div class="character-stage"><div class="stage-glow"></div><div class="stage-cat" id="stageCat">🐱</div><div class="stage-shadow"></div></div>
-              <div class="character-bio"><div class="bio-head"><div><strong id="characterName">喵白白</strong><span id="characterRole">BLUE PAWS · 控球後衛</span></div><span class="level-badge">Lv. 5</span></div><p id="characterBio">靈活的街頭控衛，擅長後撤步和快速變向。</p><div class="stat-grid"><div><span>速度</span><i><b style="width:76%"></b></i><em>★★★★☆</em></div><div><span>投籃</span><i><b style="width:82%"></b></i><em>★★★★☆</em></div><div><span>三分</span><i><b style="width:68%"></b></i><em>★★★☆☆</em></div><div><span>防守</span><i><b style="width:58%"></b></i><em>★★★☆☆</em></div></div></div>
+              <div class="character-stage"><div class="stage-glow"></div><div class="stage-cat" id="stageCat" data-number="23"><img id="stageCatImage" src="assets/generated-white-cat.png" alt="喵白白" /></div><div class="stage-shadow"></div></div>
+              <div class="character-bio"><div class="bio-head"><div><strong id="characterName">喵白白</strong><span id="characterRole">BLUE PAWS · 控球後衛</span></div><span class="level-badge">Lv. 5</span></div><p id="characterBio">靈活的街頭控衛，擅長後撤步和快速變向。</p><div class="stat-grid"><div><span>速度</span><i><b id="statSpeed" style="width:76%"></b></i><em id="starsSpeed">★★★★☆</em></div><div><span>投籃</span><i><b id="statShot" style="width:82%"></b></i><em id="starsShot">★★★★☆</em></div><div><span>三分</span><i><b id="statThree" style="width:68%"></b></i><em id="starsThree">★★★☆☆</em></div><div><span>防守</span><i><b id="statDefense" style="width:58%"></b></i><em id="starsDefense">★★★☆☆</em></div></div><div class="support-character"><img src="assets/generated-support-cat-v2.png" alt="喵藍藍" /><span><b>喵藍藍</b><small>支援角色 · 全隊命中率 +10%</small></span></div></div>
             </div>
           </section>
 
@@ -183,8 +189,8 @@
       <div class="help-modal" role="dialog" aria-modal="true" aria-labelledby="helpTitle">
         <button class="modal-close" id="closeHelp" type="button" aria-label="關閉">×</button>
         <span class="modal-eyebrow">HOW TO PLAY</span><h2 id="helpTitle">三十秒學會投籃</h2>
-        <div class="help-grid"><div><kbd>W A S D</kbd><strong>移動喵白白</strong></div><div><kbd>Space</kbd><strong>按住蓄力，放開出手</strong></div><div><kbd>Shift</kbd><strong>消耗體力衝刺</strong></div><div><kbd>Q / E / R / F</kbd><strong>施放必殺技能</strong></div></div>
-        <p>手機玩家可以使用畫面上的搖桿和動作按鈕。投籃時讓指針停在綠色區域，會更容易命中。</p>
+        <div class="help-grid" id="helpGrid"><div><kbd>W A S D</kbd><strong>移動喵白白</strong></div><div><kbd>Space</kbd><strong>按住蓄力，放開出手</strong></div><div><kbd>Shift</kbd><strong>消耗體力衝刺</strong></div><div><kbd>Q / E / R / F</kbd><strong>施放必殺技能</strong></div></div>
+        <p id="helpDescription">手機玩家可以使用畫面上的搖桿和動作按鈕。投籃時讓指針停在綠色區域，會更容易命中。</p>
         <button class="primary-button modal-start" id="modalStart" type="button">知道了，開始比賽　▶</button>
       </div>
     </div>

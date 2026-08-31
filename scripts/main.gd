@@ -42,19 +42,27 @@ const PASS_RECT := Rect2(653.0, 570.0, 58.0, 58.0)
 const STEAL_RECT := Rect2(716.0, 570.0, 58.0, 58.0)
 const SPRINT_RECT := Rect2(590.0, 570.0, 58.0, 58.0)
 const JOYSTICK_RECT := Rect2(58.0, 527.0, 122.0, 122.0)
+const PLAYER_CARD_RECT := Rect2(35.0, 714.0, 520.0, 80.0)
 
 var font: Font
 var court_texture: Texture2D = preload("res://assets/generated-rooftop-court-v2.png")
 var player_texture: Texture2D = preload("res://assets/generated-white-cat.png")
 var opponent_texture: Texture2D = preload("res://assets/generated-calico-cat.png")
-var title_emblem_texture: Texture2D = preload("res://assets/generated-title-emblem.png")
+var story_opponent_texture: Texture2D = preload("res://assets/generated-orange-cat-v2.png")
+var boss_opponent_texture: Texture2D = preload("res://assets/generated-boss-cat-v2.png")
+var title_emblem_texture: Texture2D = preload("res://assets/generated-app-icon-v2.png")
+var ui_frame_texture: Texture2D = preload("res://assets/generated-ui-frame-v2.png")
 var feature_texture: Texture2D = preload("res://assets/generated-feature-icons-v2.png")
 var skill_texture: Texture2D = preload("res://assets/generated-skill-sheet.png")
 var mode_texture: Texture2D = preload("res://assets/generated-mode-sheet.png")
 var progression_texture: Texture2D = preload("res://assets/generated-progression-badges.png")
 var equipment_texture: Texture2D = preload("res://assets/generated-equipment-sheet.png")
 var shooting_guide_texture: Texture2D = preload("res://assets/generated-shooting-guide.png")
-var maid_texture: Texture2D = preload("res://assets/blue-maid.png")
+var maid_texture: Texture2D = preload("res://assets/generated-support-cat-v2.png")
+var fire_dunk_vfx_texture: Texture2D = preload("res://assets/generated-vfx-fire-dunk-v2.png")
+var three_pointer_vfx_texture: Texture2D = preload("res://assets/generated-vfx-three-pointer-v2.png")
+var crossover_vfx_texture: Texture2D = preload("res://assets/generated-vfx-crossover-v2.png")
+var trophy_badge_texture: Texture2D = preload("res://assets/generated-trophy-badge-v2.png")
 var generated_art := true
 var running := false
 var game_over := false
@@ -69,6 +77,7 @@ var stamina := 86.0
 var possession := "player"
 var mode := "quick"
 var mode_name := "快速比賽"
+var player_character := "white"
 var period := 1
 
 var player := {"x": 302.0, "y": 565.0, "facing": 1.0, "bob": 0.0, "dash": 0.0}
@@ -77,11 +86,13 @@ var ball := {"x": 329.0, "y": 487.0, "spin": 0.0, "in_flight": false, "loose": f
 var flight := {}
 
 var charging := false
+var charging_shooter := ""
 var charge := 0.16
 var charge_direction := 1.0
 var shot_cooldown := 0.0
 var opponent_think := 1.5
 var opponent_shot_cooldown := 0.0
+var opponent_defense_cooldown := 0.0
 var next_shot_bonus := 0.0
 var sprinting := false
 var joystick_active := false
@@ -101,7 +112,15 @@ var mode_data := {
 	"quick": {"name": "快速比賽", "duration": 90.0, "target": 11, "opponent_accuracy": .46, "opponent_speed": 148.0, "shot_bonus": .04, "tag": "快速比賽 · 先得 11 分"},
 	"story": {"name": "故事模式", "duration": 105.0, "target": 15, "opponent_accuracy": .50, "opponent_speed": 156.0, "shot_bonus": .02, "tag": "故事模式 · 街區 15 分戰"},
 	"challenge": {"name": "挑戰模式", "duration": 60.0, "target": 18, "opponent_accuracy": .55, "opponent_speed": 166.0, "shot_bonus": -.02, "tag": "挑戰模式 · 60 秒得 18 分"},
-	"boss": {"name": "Boss 挑戰", "duration": 120.0, "target": 21, "opponent_accuracy": .67, "opponent_speed": 183.0, "shot_bonus": -.05, "tag": "Boss 挑戰 · 決戰 21 分"}
+	"boss": {"name": "Boss 挑戰", "duration": 120.0, "target": 21, "opponent_accuracy": .67, "opponent_speed": 183.0, "shot_bonus": -.05, "tag": "Boss 挑戰 · 決戰 21 分"},
+	"duo": {"name": "雙人對戰", "duration": 90.0, "target": 11, "opponent_accuracy": .46, "opponent_speed": 148.0, "shot_bonus": .04, "tag": "雙人對戰 · P1/P2 先得 11 分"}
+}
+
+var player_data := {
+	"white": {"name": "喵白白", "team": "BLUE PAWS", "role": "控球後衛", "color": BLUE, "stats": [76, 82, 68, 58]},
+	"calico": {"name": "喵布布", "team": "RED CLAWS", "role": "得分後衛", "color": RED, "stats": [65, 88, 91, 52]},
+	"orange": {"name": "喵橘橘", "team": "TEAL TIGERS", "role": "敏捷前鋒", "color": Color("24c3bf"), "stats": [92, 74, 70, 64]},
+	"boss": {"name": "喵霸霸", "team": "VIOLET BOSS", "role": "全能中鋒", "color": Color("a875ff"), "stats": [48, 80, 72, 96]}
 }
 
 var skyline := [
@@ -141,6 +160,11 @@ func _input(event: InputEvent) -> void:
 		if key_event.pressed and not key_event.echo:
 			if key_event.keycode == KEY_H:
 				toggle_help()
+			elif key_event.keycode == KEY_ENTER and mode == "duo":
+				if help_visible:
+					help_visible = false
+					return
+				begin_opponent_shot()
 			elif key_event.keycode == KEY_ENTER:
 				if help_visible:
 					help_visible = false
@@ -149,6 +173,8 @@ func _input(event: InputEvent) -> void:
 					restart_match()
 				else:
 					toggle_start()
+			elif key_event.keycode == KEY_C:
+				cycle_player_character()
 			elif key_event.keycode == KEY_1:
 				request_mode("quick")
 			elif key_event.keycode == KEY_2:
@@ -157,8 +183,14 @@ func _input(event: InputEvent) -> void:
 				request_mode("challenge")
 			elif key_event.keycode == KEY_4:
 				request_mode("boss")
+			elif key_event.keycode == KEY_5:
+				request_mode("duo")
 			elif key_event.keycode == KEY_SPACE:
 				begin_shot()
+			elif key_event.keycode == KEY_SLASH and mode == "duo":
+				attempt_opponent_steal()
+			elif key_event.keycode == KEY_X:
+				attempt_steal()
 			elif key_event.keycode == KEY_Q:
 				trigger_skill("火焰灌籃")
 			elif key_event.keycode == KEY_E:
@@ -172,8 +204,9 @@ func _input(event: InputEvent) -> void:
 					help_visible = false
 				else:
 					running = false
-		elif not key_event.pressed and key_event.keycode == KEY_SPACE:
-			release_shot()
+		elif not key_event.pressed:
+			if key_event.keycode == KEY_SPACE or (key_event.keycode == KEY_ENTER and mode == "duo"):
+				release_shot()
 		return
 
 	if event is InputEventMouseButton:
@@ -199,6 +232,8 @@ func _input(event: InputEvent) -> void:
 				toggle_start()
 			elif RESET_RECT.has_point(p):
 				reset_game()
+			elif PLAYER_CARD_RECT.has_point(p):
+				cycle_player_character()
 			elif SHOT_RECT.has_point(p):
 				begin_shot()
 			elif PASS_RECT.has_point(p):
@@ -236,6 +271,12 @@ func _input(event: InputEvent) -> void:
 				muted = not muted
 			elif game_over and REPLAY_RECT.has_point(p):
 				restart_match()
+			elif START_RECT.has_point(p):
+				toggle_start()
+			elif RESET_RECT.has_point(p):
+				reset_game()
+			elif PLAYER_CARD_RECT.has_point(p):
+				cycle_player_character()
 			elif MODE_RECT.has_point(p):
 				cycle_mode()
 			elif SHOT_RECT.has_point(p):
@@ -277,6 +318,7 @@ func update_game(dt: float) -> void:
 	time_left -= dt
 	shot_cooldown = max(0.0, shot_cooldown - dt)
 	opponent_shot_cooldown = max(0.0, opponent_shot_cooldown - dt)
+	opponent_defense_cooldown = max(0.0, opponent_defense_cooldown - dt)
 	player["dash"] = max(0.0, player["dash"] - dt)
 	opponent["dash"] = max(0.0, opponent["dash"] - dt)
 	skill_flash_timer = max(0.0, skill_flash_timer - dt)
@@ -300,13 +342,13 @@ func update_game(dt: float) -> void:
 
 func update_player(dt: float) -> void:
 	var axis := Vector2.ZERO
-	if Input.is_key_pressed(KEY_D) or Input.is_key_pressed(KEY_RIGHT):
+	if Input.is_key_pressed(KEY_D) or (mode != "duo" and Input.is_key_pressed(KEY_RIGHT)):
 		axis.x += 1.0
-	if Input.is_key_pressed(KEY_A) or Input.is_key_pressed(KEY_LEFT):
+	if Input.is_key_pressed(KEY_A) or (mode != "duo" and Input.is_key_pressed(KEY_LEFT)):
 		axis.x -= 1.0
-	if Input.is_key_pressed(KEY_S) or Input.is_key_pressed(KEY_DOWN):
+	if Input.is_key_pressed(KEY_S) or (mode != "duo" and Input.is_key_pressed(KEY_DOWN)):
 		axis.y += 1.0
-	if Input.is_key_pressed(KEY_W) or Input.is_key_pressed(KEY_UP):
+	if Input.is_key_pressed(KEY_W) or (mode != "duo" and Input.is_key_pressed(KEY_UP)):
 		axis.y -= 1.0
 	axis += joystick
 	if axis.length() > 1.0:
@@ -314,7 +356,8 @@ func update_player(dt: float) -> void:
 
 	var sprint_key := Input.is_key_pressed(KEY_SHIFT)
 	var wants_sprint := (sprint_key or sprinting) and axis.length() > 0.05 and stamina > 0.0
-	var speed := 380.0 if wants_sprint else 240.0
+	var speed_factor := clampf(0.88 + player_stat(0) / 500.0, 0.92, 1.12)
+	var speed := (380.0 if wants_sprint else 240.0) * speed_factor
 	if wants_sprint:
 		stamina = max(0.0, stamina - dt * 20.0)
 	else:
@@ -334,6 +377,9 @@ func update_player(dt: float) -> void:
 
 
 func update_opponent(dt: float) -> void:
+	if mode == "duo":
+		update_human_opponent(dt)
+		return
 	var target := Vector2(HOOP.x - 145.0, 520.0) if possession == "opponent" else Vector2(float(player["x"]) + 106.0, float(player["y"]) - 3.0)
 	if bool(ball["loose"]):
 		target = Vector2(float(ball["x"]), float(ball["y"]) + 62.0)
@@ -346,6 +392,32 @@ func update_opponent(dt: float) -> void:
 	if abs(delta.x) > 2.0:
 		opponent["facing"] = 1.0 if delta.x > 0 else -1.0
 	opponent["bob"] = float(opponent["bob"]) + dt * (9.0 if dist > 25 else 3.0)
+	if possession == "opponent" and not bool(ball["in_flight"]):
+		ball["x"] = float(opponent["x"]) - float(opponent["facing"]) * 25.0
+		ball["y"] = float(opponent["y"]) - 75.0 + sin(elapsed * 9.0 + 1.0) * 6.0
+		ball["loose"] = false
+
+
+func update_human_opponent(dt: float) -> void:
+	var axis := Vector2.ZERO
+	if Input.is_key_pressed(KEY_RIGHT):
+		axis.x += 1.0
+	if Input.is_key_pressed(KEY_LEFT):
+		axis.x -= 1.0
+	if Input.is_key_pressed(KEY_DOWN):
+		axis.y += 1.0
+	if Input.is_key_pressed(KEY_UP):
+		axis.y -= 1.0
+	if axis.length() > 1.0:
+		axis = axis.normalized()
+	var speed := 245.0 * clampf(0.88 + float(player_data["calico"]["stats"][0]) / 500.0, 0.92, 1.12)
+	opponent["x"] = clamp(float(opponent["x"]) + axis.x * speed * dt, 104.0, 810.0)
+	opponent["y"] = clamp(float(opponent["y"]) + axis.y * speed * 0.38 * dt, 456.0, 576.0)
+	if abs(axis.x) > 0.02:
+		opponent["facing"] = 1.0 if axis.x > 0 else -1.0
+	opponent["bob"] = float(opponent["bob"]) + dt * (10.0 if axis.length() > 0.05 else 3.0)
+	if float(opponent["dash"]) > 0.0:
+		opponent["x"] = clamp(float(opponent["x"]) + float(opponent["facing"]) * 165.0 * dt, 104.0, 810.0)
 	if possession == "opponent" and not bool(ball["in_flight"]):
 		ball["x"] = float(opponent["x"]) - float(opponent["facing"]) * 25.0
 		ball["y"] = float(opponent["y"]) - 75.0 + sin(elapsed * 9.0 + 1.0) * 6.0
@@ -405,7 +477,27 @@ func update_loose_ball(dt: float) -> void:
 
 
 func update_ai(dt: float) -> void:
-	if possession != "opponent" or bool(ball["in_flight"]):
+	if mode == "duo":
+		return
+	if bool(ball["in_flight"]):
+		return
+	if possession == "player":
+		# A defender can punish a predictable, close-range charge instead of
+		# leaving the player with unlimited uncontested possessions.
+		if charging and opponent_defense_cooldown <= 0.0:
+			var pressure_distance := Vector2(float(player["x"]), float(player["y"])).distance_to(Vector2(float(opponent["x"]), float(opponent["y"])))
+			if pressure_distance < 126.0:
+				opponent_defense_cooldown = 1.15
+				var steal_chance := .16 + float(mode_data[mode]["opponent_accuracy"]) * .18
+				if randf() < steal_chance:
+					charging = false
+					charging_shooter = ""
+					set_possession("opponent")
+					player["dash"] = .16
+					burst(float(opponent["x"]), float(opponent["y"]) - 62.0, opponent_color(), 9)
+					show_message("%s抓到你的蓄力空檔！" % opponent_display_name(), 1.2)
+		return
+	if possession != "opponent":
 		return
 	if opponent_shot_cooldown > 0.0:
 		return
@@ -447,15 +539,42 @@ func begin_shot() -> void:
 	if bool(ball["in_flight"]) or shot_cooldown > 0.0 or charging:
 		return
 	charging = true
+	charging_shooter = "player"
 	charge = 0.16
 	charge_direction = 1.0
 	show_message("蓄力瞄準中 · 放開出手", 0.5)
 
 
+func begin_opponent_shot() -> void:
+	if mode != "duo":
+		return
+	if not running:
+		show_message("先按「開始比賽」再上場！", 1.2)
+		return
+	if possession != "opponent":
+		show_message("P2 先把球搶回來！", 1.1)
+		return
+	if bool(ball["in_flight"]) or opponent_shot_cooldown > 0.0 or charging:
+		return
+	charging = true
+	charging_shooter = "opponent"
+	charge = 0.16
+	charge_direction = 1.0
+	show_message("P2 蓄力瞄準中 · 放開 Enter", 0.6)
+
+
 func release_shot(force_charge: float = -1.0) -> void:
 	if not charging:
 		return
+	var shooter := charging_shooter
 	charging = false
+	charging_shooter = ""
+	if shooter == "opponent":
+		if possession != "opponent" or bool(ball["in_flight"]):
+			return
+		opponent_shot_cooldown = .55
+		shoot_for_opponent(force_charge if force_charge >= 0.0 else charge)
+		return
 	if possession != "player" or bool(ball["in_flight"]):
 		return
 	var final_charge: float = charge if force_charge < 0.0 else force_charge
@@ -473,23 +592,25 @@ func release_shot(force_charge: float = -1.0) -> void:
 	add_floater("甜蜜點！" if final_charge >= .61 and final_charge <= .83 else "出手！", float(player["x"]), float(player["y"]) - 130.0, GREEN if final_charge >= .61 and final_charge <= .83 else BLUE_LIGHT)
 
 
-func shoot_for_opponent() -> void:
+func shoot_for_opponent(charge_value: float = .72) -> void:
 	var distance_to_hoop: float = absf(HOOP.x - float(opponent["x"]))
 	flight = {
 		"shooter": "opponent", "start": Vector2(float(opponent["x"]) - 25.0, float(opponent["y"]) - 78.0),
-		"target": Vector2(HOOP.x, RIM_Y - 12.0), "arc": 118.0, "duration": clamp(.78 + distance_to_hoop / 1600.0, .8, 1.22),
-		"t": 0.0, "charge": .72, "distance": distance_to_hoop
+		"target": Vector2(HOOP.x, RIM_Y - 12.0), "arc": 112.0 + charge_value * 38.0, "duration": clamp(.78 + distance_to_hoop / 1600.0, .8, 1.22),
+		"t": 0.0, "charge": charge_value, "distance": distance_to_hoop
 	}
 	ball["in_flight"] = true
 	ball["loose"] = false
 	possession = "none"
-	add_floater("喵布布出手", float(opponent["x"]), float(opponent["y"]) - 124.0, Color("ffb4bf"))
+	add_floater("%s出手" % opponent_display_name(), float(opponent["x"]), float(opponent["y"]) - 124.0, opponent_color().lightened(.22))
 
 
 func resolve_player_shot() -> void:
 	var sweet: float = 1.0 - minf(1.0, absf(float(flight["charge"]) - .72) / .72)
 	var distance_bonus: float = clampf(1.0 - absf(float(flight["distance"]) - 535.0) / 800.0, .35, 1.0)
-	var chance: float = clampf(.18 + sweet * .68 + distance_bonus * .08 + next_shot_bonus + float(mode_data[mode]["shot_bonus"]), .08, .96)
+	var shot_bonus: float = (player_stat(1) - 76.0) * .0035
+	var three_bonus: float = (player_stat(2) - 68.0) * .0025 if float(flight["distance"]) > 535.0 else 0.0
+	var chance: float = clampf(.18 + sweet * .68 + distance_bonus * .08 + shot_bonus + three_bonus + next_shot_bonus + float(mode_data[mode]["shot_bonus"]), .08, .96)
 	var made: bool = sweet > .84 or randf() < chance
 	next_shot_bonus = 0.0
 	if made:
@@ -508,14 +629,18 @@ func resolve_player_shot() -> void:
 
 
 func resolve_opponent_shot() -> void:
-	var made := randf() < float(mode_data[mode]["opponent_accuracy"])
+	var sweet: float = 1.0 - minf(1.0, absf(float(flight["charge"]) - .72) / .72)
+	var distance_bonus: float = clampf(1.0 - absf(float(flight["distance"]) - 535.0) / 800.0, .35, 1.0)
+	var human_chance: float = clampf(.18 + sweet * .68 + distance_bonus * .08 + (float(player_data["calico"]["stats"][1]) - 76.0) * .0035 + ((float(player_data["calico"]["stats"][2]) - 68.0) * .0025 if float(flight["distance"]) > 535.0 else 0.0), .08, .96)
+	var shot_chance: float = human_chance if mode == "duo" else float(mode_data[mode]["opponent_accuracy"])
+	var made := randf() < shot_chance
 	if made:
 		var points := 3 if float(flight["distance"]) > 535.0 else 2
 		score_opponent += points
-		rings.append({"x": HOOP.x, "y": RIM_Y, "radius": 18.0, "speed": 108.0, "life": .6, "max_life": .6, "color": RED})
-		burst(HOOP.x, RIM_Y, Color("ff94a6"), 15)
-		add_floater("喵布布 +%d" % points, HOOP.x - 42.0, RIM_Y - 50.0, Color("ffb8c4"))
-		show_message("喵布布命中 %d 分" % points, 1.4)
+		rings.append({"x": HOOP.x, "y": RIM_Y, "radius": 18.0, "speed": 108.0, "life": .6, "max_life": .6, "color": opponent_color()})
+		burst(HOOP.x, RIM_Y, opponent_color().lightened(.18), 15)
+		add_floater("%s +%d" % [opponent_display_name(), points], HOOP.x - 42.0, RIM_Y - 50.0, opponent_color().lightened(.24))
+		show_message("%s命中 %d 分" % [opponent_display_name(), points], 1.4)
 		reset_after_score("player")
 	else:
 		make_loose_ball(HOOP.x - 12.0, RIM_Y + 12.0, -120.0, -180.0)
@@ -565,11 +690,12 @@ func attempt_steal() -> void:
 		show_message("現在是你的球權，往籃框切入！", 1.1)
 		return
 	if Vector2(float(player["x"]), float(player["y"])).distance_to(Vector2(float(opponent["x"]), float(opponent["y"]))) > 148.0:
-		show_message("靠近喵布布再按抄球", 1.2)
+		show_message("靠近%s再按抄球" % opponent_display_name(), 1.2)
 		return
 	player["dash"] = .18
 	stamina = max(0.0, stamina - 8.0)
-	if randf() < .68:
+	var steal_chance := clampf(.68 + (player_stat(3) - 58.0) * .004, .52, .84)
+	if randf() < steal_chance:
 		set_possession("player")
 		energy = clamp(energy + 8.0, 0.0, 100.0)
 		burst(float(opponent["x"]), float(opponent["y"]) - 60.0, GREEN, 10)
@@ -577,6 +703,29 @@ func attempt_steal() -> void:
 		show_message("✋ 抄球成功！", 1.3)
 	else:
 		show_message("差一點，抓準時機！", 1.1)
+
+
+func attempt_opponent_steal() -> void:
+	if mode != "duo":
+		return
+	if not running:
+		show_message("先開始比賽！", 1.1)
+		return
+	if possession != "player":
+		show_message("P2 需要等 P1 持球時抄球", 1.1)
+		return
+	if Vector2(float(player["x"]), float(player["y"])).distance_to(Vector2(float(opponent["x"]), float(opponent["y"]))) > 148.0:
+		show_message("P2 靠近 P1 再按 / 抄球", 1.2)
+		return
+	opponent["dash"] = .18
+	var steal_chance := clampf(.64 + (float(player_data["calico"]["stats"][3]) - 52.0) * .004, .50, .82)
+	if randf() < steal_chance:
+		set_possession("opponent")
+		burst(float(player["x"]), float(player["y"]) - 60.0, RED, 10)
+		add_floater("P2 抄球成功！", float(opponent["x"]), float(opponent["y"]) - 124.0, Color("ffb8c4"))
+		show_message("P2 ✋ 抄球成功！", 1.3)
+	else:
+		show_message("P2 抄球失敗，抓準時機！", 1.1)
 
 
 func perform_pass() -> void:
@@ -598,6 +747,9 @@ func perform_pass() -> void:
 func trigger_skill(skill_name: String) -> void:
 	if not running:
 		show_message("先開始比賽！", 1.1)
+		return
+	if possession != "player" and skill_name in ["火焰灌籃", "後撤步三分", "流星投籃"]:
+		show_message("先把球搶回來才能施放這招", 1.2)
 		return
 	var costs := {"火焰灌籃": 34.0, "後撤步三分": 28.0, "幻影變向": 22.0, "流星投籃": 40.0}
 	var cost: float = costs.get(skill_name, 25.0)
@@ -643,7 +795,7 @@ func toggle_start() -> void:
 		return
 	running = not running
 	if running:
-		show_message("開球！喵白白，掌握節奏！", 1.4)
+		show_message("開球！%s，掌握節奏！" % player_display_name(), 1.4)
 	else:
 		show_message("比賽暫停", 1.2)
 
@@ -658,9 +810,10 @@ func end_game() -> void:
 	running = false
 	game_over = true
 	charging = false
+	charging_shooter = ""
 	var won := score_player > score_opponent
 	var tied := score_player == score_opponent
-	show_message("🏆 勝利！喵白白稱霸球場！" if won else "平手！再來一場決勝負。" if tied else "終場！下一球一定更準。", 2.8)
+	show_message("🏆 勝利！%s 稱霸球場！" % player_display_name() if won else "平手！再來一場決勝負。" if tied else "終場！下一球一定更準。", 2.8)
 	burst(HOOP.x, RIM_Y - 8.0, GOLD if won else BLUE_LIGHT, 32)
 
 
@@ -684,11 +837,13 @@ func reset_game(keep_mode: bool = true) -> void:
 	ball = {"x": 329.0, "y": 487.0, "spin": 0.0, "in_flight": false, "loose": false, "vx": 0.0, "vy": 0.0, "bounces": 0}
 	flight = {}
 	charging = false
+	charging_shooter = ""
 	charge = .16
 	charge_direction = 1.0
 	shot_cooldown = 0.0
 	opponent_think = 1.5
 	opponent_shot_cooldown = 0.0
+	opponent_defense_cooldown = 0.0
 	next_shot_bonus = 0.0
 	sprinting = false
 	joystick = Vector2.ZERO
@@ -722,16 +877,58 @@ func cycle_mode() -> void:
 	if running:
 		show_message("請先暫停比賽，再切換模式。", 1.2)
 		return
-	var mode_order := ["quick", "story", "challenge", "boss"]
+	var mode_order := ["quick", "story", "challenge", "boss", "duo"]
 	var current_index: int = mode_order.find(mode)
 	var next_index: int = (current_index + 1) % mode_order.size() if current_index >= 0 else 0
 	set_mode(String(mode_order[next_index]))
 
 
+func player_texture_for_selection() -> Texture2D:
+	if player_character == "calico":
+		return opponent_texture
+	if player_character == "orange":
+		return story_opponent_texture
+	if player_character == "boss":
+		return boss_opponent_texture
+	return player_texture
+
+
+func player_display_name() -> String:
+	return String(player_data[player_character]["name"])
+
+
+func player_team_label() -> String:
+	return String(player_data[player_character]["team"])
+
+
+func player_role() -> String:
+	return String(player_data[player_character]["role"])
+
+
+func player_color() -> Color:
+	return player_data[player_character]["color"] as Color
+
+
+func player_stat(index: int) -> float:
+	var stats: Array = player_data[player_character]["stats"]
+	return float(stats[clampi(index, 0, stats.size() - 1)])
+
+
+func cycle_player_character() -> void:
+	if running:
+		show_message("請先暫停比賽，再切換角色。", 1.2)
+		return
+	var order := ["white", "calico", "orange", "boss"]
+	var current_index: int = order.find(player_character)
+	var next_index: int = (current_index + 1) % order.size() if current_index >= 0 else 0
+	player_character = String(order[next_index])
+	show_message("%s 已上場 · 按 C 可切換" % player_display_name(), 1.3)
+
+
 func restart_match() -> void:
 	reset_game()
 	running = true
-	show_message("重新開球！喵白白，掌握節奏！", 1.4)
+	show_message("重新開球！%s，掌握節奏！" % player_display_name(), 1.4)
 
 
 func show_message(value: String, duration: float = 1.5) -> void:
@@ -814,6 +1011,10 @@ func draw_background() -> void:
 		var y := float(88 + ((i * 47) % 220))
 		var radius := 1.4 if i % 6 == 0 else .75
 		draw_circle(Vector2(x, y), radius, Color(0.69, 0.83, 1.0, .25 + float(i % 4) * .1))
+	if generated_art and ui_frame_texture != null:
+		# A low-opacity generated frame ties the native HUD to the illustrated
+		# browser layout without obscuring gameplay or localized text.
+		draw_texture_rect(ui_frame_texture, Rect2(0.0, 0.0, DESIGN_SIZE.x, DESIGN_SIZE.y), false, Color(1.0, 1.0, 1.0, .12))
 
 
 func draw_header() -> void:
@@ -844,30 +1045,31 @@ func draw_court_card() -> void:
 	draw_mode_badge(Vector2(682.0, 121.0), mode)
 	# score strip
 	panel(Rect2(41.0, 139.0, 812.0, 42.0), Color(0.08, 0.15, 0.31, .88), Color("213d71"), 12.0)
-	draw_circle(Vector2(62.0, 160.0), 13.0, BLUE)
+	draw_circle(Vector2(62.0, 160.0), 13.0, player_color())
 	if generated_art:
-		draw_cat_portrait(player_texture, Rect2(49.0, 147.0, 26.0, 26.0))
+		draw_cat_portrait(player_texture_for_selection(), Rect2(49.0, 147.0, 26.0, 26.0))
 	else:
 		centered_text("🐱", Vector2(62.0, 160.0), 25.0, 14, TEXT)
-	label_text("P1 · 喵白白", Vector2(82.0, 156.0), 11, TEXT)
-	label_text("BLUE PAWS", Vector2(82.0, 169.0), 7, Color("7d9bcc"))
+	label_text("P1 · %s" % player_display_name(), Vector2(82.0, 156.0), 11, TEXT)
+	label_text(player_team_label(), Vector2(82.0, 169.0), 7, player_color().lightened(.12))
 	label_text("%02d" % score_player, Vector2(185.0, 169.0), 28, TEXT)
 	centered_text("第 %d 節" % period, Vector2(438.0, 150.0), 90.0, 9, Color("8da7d2"))
 	centered_text(format_time(time_left), Vector2(438.0, 169.0), 120.0, 20, TEXT)
 	centered_text("進攻回合" if possession == "player" else "防守回合" if possession == "opponent" else "爭搶籃板", Vector2(438.0, 180.0), 120.0, 8, BLUE_LIGHT)
 	label_text("%02d" % score_opponent, Vector2(670.0, 169.0), 28, TEXT)
-	label_text("P2 · 喵布布", Vector2(711.0, 156.0), 11, TEXT)
-	label_text("RED CLAWS", Vector2(711.0, 169.0), 7, Color("c48aa0"))
-	draw_circle(Vector2(833.0, 160.0), 13.0, RED)
+	label_text("P2 · %s" % opponent_display_name(), Vector2(711.0, 156.0), 11, TEXT)
+	label_text(opponent_team_label(), Vector2(711.0, 169.0), 7, opponent_color().lightened(.12))
+	draw_circle(Vector2(833.0, 160.0), 13.0, opponent_color())
 	if generated_art:
-		draw_cat_portrait(opponent_texture, Rect2(820.0, 147.0, 26.0, 26.0))
+		draw_cat_portrait(opponent_texture_for_mode(), Rect2(820.0, 147.0, 26.0, 26.0))
 	else:
 		centered_text("🐈", Vector2(833.0, 160.0), 25.0, 14, TEXT)
 	# world viewport
 	draw_world()
 	# footer inside court
 	panel(Rect2(41.0, 646.0, 812.0, 34.0), Color(0.04, 0.08, 0.18, .72), Color("213d70"), 10.0)
-	label_text("🎮  WASD 移動　·　Space 蓄力投籃　·　Shift 衝刺　·　Q/E/R/F 必殺　·　1-4 模式", Vector2(53.0, 667.0), 9, Color("90a8d0"))
+	var control_hint := "🎮  P1 WASD／Space／X 抄球　·　P2 方向鍵／Enter／/ 抄球" if mode == "duo" else "🎮  WASD 移動　·　Space 蓄力投籃　·　Shift 衝刺　·　Q/E/R/F 必殺　·　1-5 模式"
+	label_text(control_hint, Vector2(53.0, 667.0), 9, Color("90a8d0"))
 	button_box(RESET_RECT, "重新開始", false)
 	button_box(START_RECT, "Ⅱ  暫停比賽" if running else "▶  開始比賽", true)
 	if message_timer > 0.0:
@@ -897,6 +1099,38 @@ func draw_cat_portrait(texture: Texture2D, rect: Rect2) -> void:
 	draw_texture_rect_region(texture, rect, source, Color.WHITE)
 
 
+func opponent_texture_for_mode() -> Texture2D:
+	if mode == "story":
+		return story_opponent_texture
+	if mode == "boss":
+		return boss_opponent_texture
+	return opponent_texture
+
+
+func opponent_display_name() -> String:
+	if mode == "story":
+		return "喵橘橘"
+	if mode == "boss":
+		return "喵霸霸"
+	return "喵布布"
+
+
+func opponent_team_label() -> String:
+	if mode == "story":
+		return "TEAL TIGERS"
+	if mode == "boss":
+		return "VIOLET BOSS"
+	return "RED CLAWS"
+
+
+func opponent_color() -> Color:
+	if mode == "story":
+		return Color("24c3bf")
+	if mode == "boss":
+		return Color("a875ff")
+	return RED
+
+
 func draw_equipment_item(rect: Rect2, column: int, row: int) -> void:
 	if equipment_texture == null:
 		return
@@ -907,9 +1141,11 @@ func draw_equipment_item(rect: Rect2, column: int, row: int) -> void:
 
 
 func draw_game_over_overlay() -> void:
-	var result_text := "喵白白 勝利！" if score_player > score_opponent else "喵布布 勝利！" if score_opponent > score_player else "平手！"
+	var result_text := "%s 勝利！" % player_display_name() if score_player > score_opponent else "%s 勝利！" % opponent_display_name() if score_opponent > score_player else "平手！"
 	var result_color := GOLD if score_player >= score_opponent else RED
 	panel(Rect2(254.0, 274.0, 418.0, 202.0), Color(0.025, .05, .13, .95), Color("79baff"), 20.0)
+	if generated_art and score_player > score_opponent and trophy_badge_texture != null:
+		draw_texture_rect(trophy_badge_texture, Rect2(273.0, 286.0, 70.0, 70.0), false, Color(1.0, 1.0, 1.0, .92))
 	centered_text("終場", Vector2(463.0, 304.0), 210.0, 13, BLUE_LIGHT)
 	centered_text(result_text, Vector2(463.0, 333.0), 350.0, 23, result_color)
 	centered_text("%02d  —  %02d" % [score_player, score_opponent], Vector2(463.0, 374.0), 280.0, 30, TEXT)
@@ -924,12 +1160,9 @@ func draw_help_overlay() -> void:
 	label_text("操作說明", Vector2(424.0, 224.0), 25, Color.WHITE)
 	label_text("先拿到 %d 分，或時間結束時領先即可獲勝" % int(mode_data[mode]["target"]), Vector2(424.0, 242.0), 9, Color("cfe3ff"))
 	button_box(HELP_CLOSE_RECT, "關閉  ESC", false)
-	var rows := [
-		["移動", "WASD / 方向鍵", "在半場內自由走位，靠近籃框命中率更穩。"],
-		["投籃", "按住 Space，放開出手", "讓蓄力停在綠色甜蜜點；遠距離可得三分。"],
-		["衝刺", "Shift", "消耗體力快速切入；停止後會逐步恢復。"],
-		["抄球 / 假傳", "右側綠色 / 紫色按鈕", "靠近持球對手再抄球，假傳可瞬間變向。"]
-	]
+	var rows := [["移動", "WASD / 方向鍵", "在半場內自由走位，靠近籃框命中率更穩。"], ["投籃", "按住 Space，放開出手", "讓蓄力停在綠色甜蜜點；遠距離可得三分。"], ["衝刺", "Shift", "消耗體力快速切入；停止後會逐步恢復。"], ["抄球 / 假傳", "右側綠色 / 紫色按鈕", "靠近持球對手再抄球，假傳可瞬間變向。"]]
+	if mode == "duo":
+		rows = [["P1 移動", "W A S D", "P1 控制藍隊；Space 蓄力投籃。"], ["P2 移動", "方向鍵", "P2 控制紅隊；Enter 蓄力投籃。"], ["P2 抄球", "/", "P2 靠近 P1 時按 / 嘗試抄球。"], ["籃板", "靠近落球處", "投失後靠近球，取得下一回合球權。"]]
 	for i in rows.size():
 		var row_y := 278.0 + float(i) * 55.0
 		draw_circle(Vector2(427.0, row_y + 9.0), 15.0, Color("3c79ce"))
@@ -1008,7 +1241,7 @@ func draw_world() -> void:
 	draw_cat(Vector2(float(opponent["x"]), float(opponent["y"])), "red", float(opponent["facing"]), float(opponent["bob"]), possession == "opponent")
 	var tag_lift := 244.0 if generated_art else 175.0
 	draw_tag(Vector2(float(player["x"]), float(player["y"]) - tag_lift), "P1", BLUE, possession == "player")
-	draw_tag(Vector2(float(opponent["x"]), float(opponent["y"]) - tag_lift), "P2", RED, possession == "opponent")
+	draw_tag(Vector2(float(opponent["x"]), float(opponent["y"]) - tag_lift), "P2", opponent_color(), possession == "opponent")
 	draw_ball()
 	draw_mobile_controls()
 	draw_effects()
@@ -1064,19 +1297,21 @@ func draw_tag(position: Vector2, value: String, color: Color, active: bool) -> v
 
 func draw_cat(position: Vector2, team: String, facing: float, bob: float, active: bool) -> void:
 	var is_blue := team == "blue"
-	var main := BLUE.darkened(.20) if is_blue else RED.darkened(.10)
-	var light := BLUE_LIGHT if is_blue else Color("ff9a84")
-	var dark := Color("1c3b88") if is_blue else Color("742447")
+	var player_tint := player_color()
+	var opponent_tint := opponent_color()
+	var main := player_tint.darkened(.20) if is_blue else opponent_tint.darkened(.10)
+	var light := player_tint.lightened(.18) if is_blue else opponent_tint.lightened(.18)
+	var dark := player_tint.darkened(.42) if is_blue else opponent_tint.darkened(.42)
 	var skin := Color("fff5e8") if is_blue else Color("f8ede2")
 	var bounce := sin(bob) * (2.4 if active else 1.2)
 	draw_set_transform(drawing_offset + (position + Vector2(0.0, bounce)) * drawing_scale, 0.0, Vector2(facing * drawing_scale, drawing_scale))
 	if generated_art:
-		var cat_texture: Texture2D = player_texture if is_blue else opponent_texture
+		var cat_texture: Texture2D = player_texture_for_selection() if is_blue else opponent_texture_for_mode()
 		# The generated cutouts carry the detailed fur, uniforms, shoes and ball.
 		draw_oval(Vector2(0.0, 3.0), 78.0, 13.0, Color(0.02, .03, .08, .42))
 		draw_texture_rect(cat_texture, Rect2(-112.0, -240.0, 224.0, 240.0), false, Color.WHITE)
 		if active:
-			draw_arc(Vector2(0.0, -112.0), 119.0, 0.0, TAU, 36, Color(0.40, .80, 1.0, .72) if is_blue else Color(1.0, .55, .52, .72), 2.0)
+			draw_arc(Vector2(0.0, -112.0), 119.0, 0.0, TAU, 36, Color(player_tint, .72) if is_blue else Color(opponent_tint, .72), 2.0)
 		draw_set_transform(drawing_offset, 0.0, Vector2(drawing_scale, drawing_scale))
 		return
 	draw_oval(Vector2(0.0, 4.0), 47.0, 9.0, Color(0.04, .03, .08, .37))
@@ -1121,7 +1356,7 @@ func draw_cat(position: Vector2, team: String, facing: float, bob: float, active
 	draw_line(Vector2(8.0, -138.0), Vector2(39.0, -144.0), Color(1.0, 1.0, 1.0, .63), 1.0)
 	draw_line(Vector2(8.0, -133.0), Vector2(40.0, -133.0), Color(1.0, 1.0, 1.0, .63), 1.0)
 	if active:
-		draw_arc(Vector2(0.0, -93.0), 47.0, 0.0, TAU, 28, Color(0.40, .80, 1.0, .85) if is_blue else Color(1.0, .55, .52, .85), 1.5)
+		draw_arc(Vector2(0.0, -93.0), 47.0, 0.0, TAU, 28, Color(player_tint, .85) if is_blue else Color(opponent_tint, .85), 1.5)
 	draw_set_transform(drawing_offset, 0.0, Vector2(drawing_scale, drawing_scale))
 
 
@@ -1163,6 +1398,13 @@ func draw_action_circle(center: Vector2, radius: float, color: Color, icon: Stri
 
 
 func draw_effects() -> void:
+	var active_skill_vfx := skill_vfx_texture()
+	if generated_art and skill_flash_timer > 0.0 and active_skill_vfx != null:
+		var vfx_alpha: float = clampf(skill_flash_timer / .75, 0.0, 1.0) * .78
+		var vfx_rect := Rect2(float(player["x"]) - 142.0, float(player["y"]) - 272.0, 284.0, 284.0)
+		if skill_flash == "火焰灌籃":
+			vfx_rect = Rect2(float(player["x"]) - 132.0, float(player["y"]) - 286.0, 264.0, 294.0)
+		draw_texture_rect(active_skill_vfx, vfx_rect, false, Color(1.0, 1.0, 1.0, vfx_alpha))
 	for ring in rings:
 		var alpha: float = clampf(float(ring["life"]) / float(ring["max_life"]), 0.0, 1.0)
 		draw_arc(Vector2(float(ring["x"]), float(ring["y"])), float(ring["radius"]), 0.0, TAU, 28, Color(ring["color"], alpha), 3.0)
@@ -1182,6 +1424,16 @@ func draw_effects() -> void:
 	if skill_flash_timer > 0.0:
 		var flash_color: Color = Color("ff7c35") if skill_flash == "火焰灌籃" else BLUE_LIGHT
 		draw_rect(Rect2(40.0, 184.0, 814.0, 458.0), Color(flash_color, skill_flash_timer / .75 * .10))
+
+
+func skill_vfx_texture() -> Texture2D:
+	if skill_flash == "火焰灌籃":
+		return fire_dunk_vfx_texture
+	if skill_flash == "後撤步三分":
+		return three_pointer_vfx_texture
+	if skill_flash == "幻影變向":
+		return crossover_vfx_texture
+	return null
 
 
 func draw_star(center: Vector2, outer: float, color: Color) -> void:
@@ -1256,13 +1508,13 @@ func draw_right_rail() -> void:
 	panel(Rect2(1155.0, 548.0, 68.0, 24.0), Color(0.13, .38, .29, .45), Color(0.35, .85, .62, .35), 8.0)
 	centered_text("P1 持球" if possession == "player" else "P2 持球" if possession == "opponent" else "球在空中", Vector2(1189.0, 560.0), 64.0, 8, GREEN if possession == "player" else GOLD)
 	# status avatar and bars
-	draw_circle(Vector2(932.0, 611.0), 20.0, BLUE)
+	draw_circle(Vector2(932.0, 611.0), 20.0, player_color())
 	if generated_art:
-		draw_cat_portrait(player_texture, Rect2(912.0, 591.0, 40.0, 40.0))
+		draw_cat_portrait(player_texture_for_selection(), Rect2(912.0, 591.0, 40.0, 40.0))
 	else:
 		centered_text("🐱", Vector2(932.0, 611.0), 35.0, 17, TEXT)
-	label_text("喵白白", Vector2(962.0, 606.0), 11, INK if generated_art else TEXT)
-	label_text("控球後衛 · Lv. 5", Vector2(962.0, 620.0), 8, INK_MUTED if generated_art else MUTED)
+	label_text(player_display_name(), Vector2(962.0, 606.0), 11, INK if generated_art else TEXT)
+	label_text("%s · Lv. 5" % player_role(), Vector2(962.0, 620.0), 8, INK_MUTED if generated_art else MUTED)
 	draw_circle(Vector2(1182.0, 607.0), 25.0, Color("193c74"))
 	draw_arc(Vector2(1182.0, 607.0), 25.0, -PI * .5, -PI * .5 + TAU * energy / 100.0, 25, PURPLE, 3.0)
 	centered_text("%d" % int(energy), Vector2(1182.0, 606.0), 45.0, 12, BLUE_LIGHT)
@@ -1288,13 +1540,14 @@ func draw_bottom_cards() -> void:
 	panel(BOTTOM_RECT, bottom_fill, bottom_border, 16.0)
 	# character card
 	label_text("03  角色設定", Vector2(43.0, 729.0), 11, Color("83b5ff"))
-	draw_circle(Vector2(80.0, 764.0), 25.0, BLUE)
+	draw_circle(Vector2(80.0, 764.0), 25.0, player_color())
 	if generated_art:
-		draw_cat_portrait(player_texture, Rect2(55.0, 739.0, 50.0, 50.0))
+		draw_cat_portrait(player_texture_for_selection(), Rect2(55.0, 739.0, 50.0, 50.0))
 	else:
 		centered_text("🐱", Vector2(80.0, 762.0), 44.0, 20, TEXT)
-	label_text("喵白白", Vector2(116.0, 756.0), 13, bottom_text)
-	label_text("BLUE PAWS · 控球後衛", Vector2(116.0, 771.0), 8, Color("77a8ee"))
+	label_text(player_display_name(), Vector2(116.0, 756.0), 13, bottom_text)
+	label_text("%s · %s" % [player_team_label(), player_role()], Vector2(116.0, 771.0), 8, player_color().lightened(.12))
+	label_text("C / 點擊切換角色", Vector2(116.0, 786.0), 7, bottom_muted)
 	label_text("速度", Vector2(258.0, 751.0), 8, bottom_muted)
 	draw_bar(Rect2(291.0, 747.0, 76.0, 6.0), .76, BLUE_LIGHT)
 	label_text("投籃", Vector2(258.0, 768.0), 8, bottom_muted)

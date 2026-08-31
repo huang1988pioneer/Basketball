@@ -22,10 +22,24 @@
     court: new Image(),
     player: new Image(),
     opponent: new Image(),
+    storyOpponent: new Image(),
+    bossOpponent: new Image(),
+    support: new Image(),
+    fireDunkVfx: new Image(),
+    threePointerVfx: new Image(),
+    crossoverVfx: new Image(),
+    trophyBadge: new Image(),
   };
   generatedArt.court.src = "assets/generated-rooftop-court-v2.png";
   generatedArt.player.src = "assets/generated-white-cat.png";
   generatedArt.opponent.src = "assets/generated-calico-cat.png";
+  generatedArt.storyOpponent.src = "assets/generated-orange-cat-v2.png";
+  generatedArt.bossOpponent.src = "assets/generated-boss-cat-v2.png";
+  generatedArt.support.src = "assets/generated-support-cat-v2.png";
+  generatedArt.fireDunkVfx.src = "assets/generated-vfx-fire-dunk-v2.png";
+  generatedArt.threePointerVfx.src = "assets/generated-vfx-three-pointer-v2.png";
+  generatedArt.crossoverVfx.src = "assets/generated-vfx-crossover-v2.png";
+  generatedArt.trophyBadge.src = "assets/generated-trophy-badge-v2.png";
   Object.values(generatedArt).forEach((image) => image.addEventListener("load", () => draw()));
 
   const $ = (id) => document.getElementById(id);
@@ -42,6 +56,15 @@
     shotButton: $("shotButton"),
     shotHint: $("shotButtonHint"),
     possession: $("possessionPill"),
+    playerAvatar: $("playerAvatar"),
+    playerName: $("playerName"),
+    playerTeam: $("playerTeam"),
+    playerStatusAvatar: $("playerStatusAvatar"),
+    statusPlayerName: $("statusPlayerName"),
+    statusPlayerRole: $("statusPlayerRole"),
+    opponentName: $("opponentName"),
+    opponentTeam: $("opponentTeam"),
+    opponentAvatar: $("opponentAvatar"),
     energyValue: $("energyValue"),
     energyBar: $("energyBar"),
     energyText: $("energyText"),
@@ -66,6 +89,7 @@
     opponent: { x: 808, y: 535, stamina: 100, facing: -1, bob: 0, dash: 0 },
     ball: { x: 383, y: 454, r: 16, inFlight: false, loose: false, spin: 0 },
     charging: false,
+    chargingShooter: null,
     charge: 0.18,
     chargeDir: 1,
     chargeTime: 0,
@@ -74,6 +98,7 @@
     pendingShot: null,
     opponentThink: 1.25,
     opponentShotCooldown: 0,
+    opponentDefenseCooldown: 0,
     energy: 68,
     sprinting: false,
     joystick: { x: 0, y: 0, active: false },
@@ -92,8 +117,18 @@
   };
 
   const characterData = {
-    white: { name: "喵白白", role: "BLUE PAWS · 控球後衛", bio: "靈活的街頭控衛，擅長後撤步和快速變向。", color: "blue", emoji: "🐱" },
-    calico: { name: "喵布布", role: "RED CLAWS · 得分後衛", bio: "自信的進攻箭頭，三分線外就是她的主場。", color: "red", emoji: "🐈" },
+    white: { name: "喵白白", role: "BLUE PAWS · 控球後衛", bio: "靈活的街頭控衛，擅長後撤步和快速變向。", color: "blue", asset: "assets/generated-white-cat.png", number: "23", stats: [76, 82, 68, 58], stars: ["★★★★☆", "★★★★☆", "★★★☆☆", "★★★☆☆"] },
+    calico: { name: "喵布布", role: "RED CLAWS · 得分後衛", bio: "自信的進攻箭頭，三分線外就是她的主場。", color: "red", asset: "assets/generated-calico-cat.png", number: "23", stats: [65, 88, 91, 52], stars: ["★★★☆☆", "★★★★☆", "★★★★★", "★★★☆☆"] },
+    orange: { name: "喵橘橘", role: "TEAL TIGERS · 敏捷前鋒", bio: "擅長交叉運球與快速切入，能在防守縫隙中找到空間。", color: "teal", asset: "assets/generated-orange-cat-v2.png", number: "7", stats: [92, 74, 70, 64], stars: ["★★★★★", "★★★☆☆", "★★★☆☆", "★★★☆☆"] },
+    boss: { name: "喵霸霸", role: "VIOLET BOSS · 全能中鋒", bio: "體格壓迫感十足的街頭巨星，籃下與外線都不能放空。", color: "purple", asset: "assets/generated-boss-cat-v2.png", number: "99", stats: [48, 80, 72, 96], stars: ["★★☆☆☆", "★★★★☆", "★★★☆☆", "★★★★★"] },
+  };
+
+  const opponentPresentation = {
+    quick: { name: "喵布布", team: "RED CLAWS", asset: "assets/generated-calico-cat.png", color: "#ff6874" },
+    story: { name: "喵橘橘", team: "TEAL TIGERS", asset: "assets/generated-orange-cat-v2.png", color: "#24c3bf" },
+    challenge: { name: "喵布布", team: "RED CLAWS", asset: "assets/generated-calico-cat.png", color: "#ff6874" },
+    boss: { name: "喵霸霸", team: "VIOLET BOSS", asset: "assets/generated-boss-cat-v2.png", color: "#a875ff" },
+    duo: { name: "喵布布", team: "RED CLAWS", asset: "assets/generated-calico-cat.png", color: "#ff6874" },
   };
 
   const modeData = {
@@ -199,6 +234,7 @@
     state.opponent.dash = 0;
     state.ball = { x: 383, y: 454, r: 16, inFlight: false, loose: false, spin: 0 };
     state.charging = false;
+    state.chargingShooter = null;
     state.charge = 0.18;
     state.chargeDir = 1;
     state.chargeTime = 0;
@@ -207,6 +243,7 @@
     state.pendingShot = null;
     state.opponentThink = 1.2;
     state.opponentShotCooldown = 0;
+    state.opponentDefenseCooldown = 0;
     state.energy = 68;
     state.sprinting = false;
     state.particles.length = 0;
@@ -217,6 +254,7 @@
     state.skillFlashTime = 0;
     state.nextShotBonus = 0;
     ui.matchLabel.textContent = mode.label;
+    updateControlsUI();
     updateUI(true);
     showToast("球場已準備好，按下開始比賽！", 1900, false);
   }
@@ -224,6 +262,7 @@
   function startOrPause() {
     if (state.gameOver) resetGame();
     state.running = !state.running;
+    const playerName = (characterData[state.character] || characterData.white).name;
     if (state.running) {
       ui.start.innerHTML = "Ⅱ　暫停比賽";
       ui.start.classList.add("is-running");
@@ -231,7 +270,7 @@
       ui.stateTitle.textContent = "比賽進行中";
       ui.stateDescription.textContent = "找空檔、抓節奏，讓對手追不上你的腳步。";
       ui.status.textContent = "比賽進行中";
-      showToast("開球！喵白白，掌握節奏！", 1400);
+      showToast(`開球！${playerName}，掌握節奏！`, 1400);
       playTone(520, .11, "triangle");
     } else {
       ui.start.innerHTML = "▶　繼續比賽";
@@ -248,17 +287,20 @@
     state.running = false;
     state.gameOver = true;
     state.charging = false;
-    const playerWon = state.score.player >= state.score.opponent;
+    state.chargingShooter = null;
+    const playerWon = state.score.player > state.score.opponent;
+    const tied = state.score.player === state.score.opponent;
     ui.start.innerHTML = "▶　再來一場";
     ui.start.classList.remove("is-running");
-    ui.stateIcon.textContent = playerWon ? "🏆" : "💪";
-    ui.stateTitle.textContent = playerWon ? "漂亮！拿下勝利" : "差一點點，再來一次";
+    ui.stateIcon.textContent = playerWon ? "🏆" : tied ? "🤝" : "💪";
+    ui.stateTitle.textContent = playerWon ? "漂亮！拿下勝利" : tied ? "平手！再來一場" : "差一點點，再來一次";
     const target = modeData[state.mode].target;
     ui.stateDescription.textContent = reason === "target" ? `先到 ${target} 分的隊伍贏得街頭榮耀。` : "時間到！調整出手節奏，再挑戰一次。";
     ui.status.textContent = "比賽結束";
-    showToast(playerWon ? "🏆 勝利！喵白白稱霸球場！" : "終場！下一球一定更準。", 2800);
+    const playerName = (characterData[state.character] || characterData.white).name;
+    showToast(playerWon ? `🏆 勝利！${playerName}稱霸球場！` : tied ? "🤝 平手！下一場決勝負。" : "終場！下一球一定更準。", 2800);
     burst(hoop.x, hoop.rimY - 9, playerWon ? "#ffd46b" : "#77bcff", 34);
-    playTone(playerWon ? 740 : 230, .25, playerWon ? "triangle" : "sawtooth", .045);
+    playTone(playerWon ? 740 : tied ? 420 : 230, .25, playerWon || tied ? "triangle" : "sawtooth", .045);
     updateUI(true);
   }
 
@@ -268,6 +310,7 @@
     state.timeLeft -= dt;
     state.shotCooldown = Math.max(0, state.shotCooldown - dt);
     state.opponentShotCooldown = Math.max(0, state.opponentShotCooldown - dt);
+    state.opponentDefenseCooldown = Math.max(0, state.opponentDefenseCooldown - dt);
     state.player.dash = Math.max(0, state.player.dash - dt);
     state.opponent.dash = Math.max(0, state.opponent.dash - dt);
     state.screenShake = Math.max(0, state.screenShake - dt);
@@ -288,8 +331,13 @@
   }
 
   function updatePlayer(dt) {
-    const keyX = (state.keys.ArrowRight || state.keys.d ? 1 : 0) - (state.keys.ArrowLeft || state.keys.a ? 1 : 0);
-    const keyY = (state.keys.ArrowDown || state.keys.s ? 1 : 0) - (state.keys.ArrowUp || state.keys.w ? 1 : 0);
+    const duoMode = state.mode === "duo";
+    const keyX = duoMode
+      ? (state.keys.d ? 1 : 0) - (state.keys.a ? 1 : 0)
+      : (state.keys.ArrowRight || state.keys.d ? 1 : 0) - (state.keys.ArrowLeft || state.keys.a ? 1 : 0);
+    const keyY = duoMode
+      ? (state.keys.s ? 1 : 0) - (state.keys.w ? 1 : 0)
+      : (state.keys.ArrowDown || state.keys.s ? 1 : 0) - (state.keys.ArrowUp || state.keys.w ? 1 : 0);
     let moveX = keyX + state.joystick.x;
     let moveY = keyY + state.joystick.y;
     const magnitude = Math.hypot(moveX, moveY);
@@ -298,7 +346,9 @@
     const sprintKey = Boolean(state.keys.Shift);
     state.sprinting = sprintKey || state.sprinting;
     const wantsSprint = state.sprinting && magnitude > .05 && state.player.stamina > 0;
-    const speed = wantsSprint ? 390 : 245;
+    const speedStat = characterData[state.character]?.stats?.[0] ?? 76;
+    const speedFactor = clamp(.88 + speedStat / 500, .92, 1.12);
+    const speed = (wantsSprint ? 390 : 245) * speedFactor;
     if (wantsSprint) state.player.stamina = Math.max(0, state.player.stamina - dt * 20);
     else state.player.stamina = Math.min(100, state.player.stamina + dt * 8);
     state.player.x = clamp(state.player.x + moveX * speed * dt, 110, 1015);
@@ -316,6 +366,10 @@
   }
 
   function updateOpponent(dt) {
+    if (state.mode === "duo") {
+      updateHumanOpponent(dt);
+      return;
+    }
     const o = state.opponent;
     const p = state.player;
     let targetX = state.possession === "opponent" ? hoop.x - 120 : p.x + 108;
@@ -329,6 +383,28 @@
     o.y = clamp(o.y + dy / dist * speed * .38 * dt, 445, 569);
     if (Math.abs(dx) > 2) o.facing = dx > 0 ? 1 : -1;
     o.bob += dt * (dist > 30 ? 9 : 3);
+    if (state.possession === "opponent" && !state.ball.inFlight) {
+      state.ball.x = o.x + o.facing * -27;
+      state.ball.y = o.y - 75 + Math.sin(state.elapsed * 10 + 1) * 6;
+      state.ball.loose = false;
+    }
+  }
+
+  function updateHumanOpponent(dt) {
+    const o = state.opponent;
+    const keyX = (state.keys.ArrowRight ? 1 : 0) - (state.keys.ArrowLeft ? 1 : 0);
+    const keyY = (state.keys.ArrowDown ? 1 : 0) - (state.keys.ArrowUp ? 1 : 0);
+    let moveX = keyX;
+    let moveY = keyY;
+    const magnitude = Math.hypot(moveX, moveY);
+    if (magnitude > 1) { moveX /= magnitude; moveY /= magnitude; }
+    const speedStat = characterData.calico?.stats?.[0] ?? 65;
+    const speed = 245 * clamp(.88 + speedStat / 500, .92, 1.12);
+    o.x = clamp(o.x + moveX * speed * dt, 110, 1120);
+    o.y = clamp(o.y + moveY * speed * .38 * dt, 445, 569);
+    if (Math.abs(moveX) > .02) o.facing = moveX > 0 ? 1 : -1;
+    o.bob += dt * (magnitude > .05 ? 10 : 3);
+    if (o.dash > 0) o.x = clamp(o.x + o.facing * 180 * dt, 110, 1120);
     if (state.possession === "opponent" && !state.ball.inFlight) {
       state.ball.x = o.x + o.facing * -27;
       state.ball.y = o.y - 75 + Math.sin(state.elapsed * 10 + 1) * 6;
@@ -385,7 +461,29 @@
   }
 
   function updateOpponentAI(dt) {
-    if (state.possession !== "opponent" || state.ball.inFlight || state.opponentShotCooldown > 0) return;
+    if (state.mode === "duo") return;
+    if (state.ball.inFlight) return;
+    if (state.possession === "player") {
+      if (state.charging && state.opponentDefenseCooldown <= 0) {
+        const pressureDistance = distance(state.player, state.opponent);
+        if (pressureDistance < 126) {
+          state.opponentDefenseCooldown = 1.15;
+          const stealChance = .16 + modeData[state.mode].opponentAccuracy * .18;
+          if (Math.random() < stealChance) {
+            state.charging = false;
+            state.chargingShooter = null;
+            ui.shotButton.classList.remove("pressed");
+            ui.shotHint.textContent = "按住蓄力";
+            setPossession("opponent");
+            state.player.dash = .16;
+            burst(state.opponent.x, state.opponent.y - 62, opponentPresentation[state.mode].color, 9);
+            showToast(`${opponentPresentation[state.mode].name} 抓到你的蓄力空檔！`, 1200);
+          }
+        }
+      }
+      return;
+    }
+    if (state.possession !== "opponent" || state.opponentShotCooldown > 0) return;
     state.opponentThink -= dt;
     if (state.opponentThink > 0) return;
     state.opponentThink = 1.6 + Math.random() * 1.6;
@@ -428,19 +526,44 @@
     if (state.possession !== "player") { showToast("先把球搶回來！", 1100); return; }
     if (state.ball.inFlight || state.shotCooldown > 0 || state.charging) return;
     state.charging = true;
+    state.chargingShooter = "player";
     state.charge = .16;
     state.chargeDir = 1;
     state.chargeTime = 0;
     ui.shotButton.classList.add("pressed");
-    ui.shotButtonHint.textContent = "放開出手";
+    ui.shotHint.textContent = "放開出手";
     playTone(320, .05, "sine", .02);
+  }
+
+  function beginOpponentShot() {
+    if (state.mode !== "duo") return;
+    if (!state.running) { showToast("先按「開始比賽」再上場！", 1300); return; }
+    if (state.possession !== "opponent") { showToast("P2 先把球搶回來！", 1100); return; }
+    if (state.ball.inFlight || state.opponentShotCooldown > 0 || state.charging) return;
+    state.charging = true;
+    state.chargingShooter = "opponent";
+    state.charge = .16;
+    state.chargeDir = 1;
+    state.chargeTime = 0;
+    ui.shotButton.classList.add("pressed", "p2-charge");
+    ui.shotHint.textContent = "P2 釋放出手";
+    playTone(250, .05, "sine", .02);
   }
 
   function releaseShot(forceCharge = null) {
     if (!state.charging) return;
+    const shooter = state.chargingShooter || "player";
     state.charging = false;
+    state.chargingShooter = null;
     ui.shotButton.classList.remove("pressed");
-    ui.shotButtonHint.textContent = "按住蓄力";
+    ui.shotButton.classList.remove("p2-charge");
+    ui.shotHint.textContent = "按住蓄力";
+    if (shooter === "opponent") {
+      if (state.possession !== "opponent" || state.ball.inFlight) return;
+      state.opponentShotCooldown = .55;
+      launchOpponentShot(forceCharge ?? state.charge);
+      return;
+    }
     if (state.possession !== "player" || state.ball.inFlight) return;
     const charge = forceCharge ?? state.charge;
     const player = state.player;
@@ -458,21 +581,29 @@
   }
 
   function shootForOpponent() {
+    launchOpponentShot(.72);
+  }
+
+  function launchOpponentShot(charge = .72) {
     const o = state.opponent;
     const distanceToHoop = Math.abs(hoop.x - o.x);
     const duration = clamp(.8 + distanceToHoop / 1700, .8, 1.25);
     state.ball.inFlight = true;
     state.ball.loose = false;
-    state.ball.flight = { shooter: "opponent", startX: o.x - 24, startY: o.y - 78, targetX: hoop.x, targetY: hoop.rimY - 12, arc: 118, duration, t: 0, charge: .72, distance: distanceToHoop };
+    state.ball.flight = { shooter: "opponent", startX: o.x - 24, startY: o.y - 78, targetX: hoop.x, targetY: hoop.rimY - 12, arc: 112 + charge * 38, duration, t: 0, charge, distance: distanceToHoop };
     state.possession = null;
-    addFloater("喵布布出手", o.x, o.y - 126, "#ffb5c1");
-    playTone(285, .08, "sine", .022);
+    const opponent = opponentPresentation[state.mode] || opponentPresentation.quick;
+    addFloater(`${opponent.name}出手`, o.x, o.y - 126, opponent.color);
+    playTone(state.mode === "duo" ? 410 : 285, .08, "sine", .022);
   }
 
   function resolvePlayerShot(flight) {
     const sweet = 1 - Math.min(1, Math.abs(flight.charge - .72) / .72);
     const distanceBonus = clamp(1 - Math.abs(flight.distance - 540) / 800, .35, 1);
-    const chance = clamp(.18 + sweet * .68 + distanceBonus * .08 + state.nextShotBonus, .08, .96);
+    const data = characterData[state.character] || characterData.white;
+    const shotBonus = (data.stats[1] - 76) * .0035;
+    const threeBonus = flight.distance > 540 ? (data.stats[2] - 68) * .0025 : 0;
+    const chance = clamp(.18 + sweet * .68 + distanceBonus * .08 + shotBonus + threeBonus + state.nextShotBonus, .08, .96);
     const made = sweet > .84 || Math.random() < chance;
     if (made) {
       const points = flight.distance > 540 ? 3 : 2;
@@ -494,7 +625,12 @@
   }
 
   function resolveOpponentShot(flight) {
-    const chance = modeData[state.mode].opponentAccuracy;
+    const opponentData = characterData.calico || characterData.white;
+    const sweet = 1 - Math.min(1, Math.abs(flight.charge - .72) / .72);
+    const distanceBonus = clamp(1 - Math.abs(flight.distance - 540) / 800, .35, 1);
+    const humanChance = clamp(.18 + sweet * .68 + distanceBonus * .08 + (opponentData.stats[1] - 76) * .0035 + (flight.distance > 540 ? (opponentData.stats[2] - 68) * .0025 : 0), .08, .96);
+    const chance = state.mode === "duo" ? humanChance : modeData[state.mode].opponentAccuracy;
+    const opponent = opponentPresentation[state.mode] || opponentPresentation.quick;
     const made = Math.random() < chance;
     if (made) {
       const points = flight.distance > 540 ? 3 : 2;
@@ -502,8 +638,8 @@
       state.screenShake = .18;
       state.rings.push({ x: hoop.x, y: hoop.rimY, radius: 22, speed: 110, life: .6, maxLife: .6, color: "#ff8e9a" });
       burst(hoop.x, hoop.rimY, "#ff94a6", 16);
-      addFloater(`喵布布 +${points}`, hoop.x - 45, hoop.rimY - 48, "#ffbec9");
-      showToast(`喵布布命中 ${points} 分`, 1500);
+      addFloater(`${opponent.name} +${points}`, hoop.x - 45, hoop.rimY - 48, opponent.color);
+      showToast(`${opponent.name}命中 ${points} 分`, 1500);
       playTone(330, .14, "sine", .03);
       resetAfterScore("player");
     } else {
@@ -537,10 +673,16 @@
     if (!state.running) { showToast("先開始比賽！", 1100); return; }
     if (state.possession !== "opponent") { showToast("現在是你的球權，往籃框切入！", 1100); return; }
     const near = distance(state.player, state.opponent) < 145;
-    if (!near) { showToast("靠近喵布布再按抄球", 1200); return; }
+    if (!near) {
+      const opponent = opponentPresentation[state.mode] || opponentPresentation.quick;
+      showToast(`靠近${opponent.name}再按抄球`, 1200);
+      return;
+    }
     state.player.dash = .18;
     state.player.stamina = Math.max(0, state.player.stamina - 8);
-    if (Math.random() < .68) {
+    const defenseStat = characterData[state.character]?.stats?.[3] ?? 58;
+    const stealChance = clamp(.68 + (defenseStat - 58) * .004, .52, .84);
+    if (Math.random() < stealChance) {
       setPossession("player");
       state.energy = clamp(state.energy + 8, 0, 100);
       burst(state.opponent.x, state.opponent.y - 60, "#75e7a9", 10);
@@ -551,6 +693,34 @@
       addFloater("被晃開了", state.player.x, state.player.y - 116, "#ffb7b7");
       showToast("差一點，抓準時機！", 1100);
       playTone(180, .08, "sawtooth", .018);
+    }
+  }
+
+  function attemptOpponentSteal() {
+    if (state.mode !== "duo") return;
+    if (!state.running) { showToast("先開始比賽！", 1100); return; }
+    if (state.possession !== "player") { showToast("P2 需要等 P1 持球時抄球", 1100); return; }
+    if (state.charging && state.chargingShooter === "player") {
+      state.charging = false;
+      state.chargingShooter = null;
+      ui.shotButton.classList.remove("pressed");
+      ui.shotHint.textContent = "按住蓄力";
+    }
+    const near = distance(state.player, state.opponent) < 145;
+    if (!near) { showToast("P2 靠近 P1 再按 / 抄球", 1200); return; }
+    state.opponent.dash = .18;
+    const defenseStat = characterData.calico?.stats?.[3] ?? 52;
+    const stealChance = clamp(.64 + (defenseStat - 52) * .004, .50, .82);
+    if (Math.random() < stealChance) {
+      setPossession("opponent");
+      burst(state.player.x, state.player.y - 60, opponentPresentation.duo.color, 10);
+      addFloater("P2 抄球成功！", state.opponent.x, state.opponent.y - 125, "#ffb8c4");
+      showToast("P2 ✋ 抄球成功！", 1300);
+      playTone(380, .1, "square", .025);
+    } else {
+      addFloater("P2 被晃開了", state.opponent.x, state.opponent.y - 116, "#ffb7b7");
+      showToast("P2 抄球失敗，抓準時機！", 1100);
+      playTone(160, .08, "sawtooth", .018);
     }
   }
 
@@ -623,8 +793,38 @@
     state.mode = mode;
     state.modeName = modeData[mode].name;
     ui.matchLabel.textContent = modeData[mode].label;
+    updateControlsUI();
     resetGame();
     showToast(`已切換至${modeData[mode].name}`, 1300, false);
+  }
+
+  function updateControlsUI() {
+    const duo = state.mode === "duo";
+    const hint = $("desktopHint");
+    if (hint) {
+      hint.innerHTML = duo
+        ? "<kbd>WASD</kbd> P1 移動　 <kbd>Space</kbd> P1 投籃　 <kbd>X</kbd> P1 抄球　 <kbd>↑↓←→</kbd> P2 移動　 <kbd>Enter</kbd> P2 投籃　 <kbd>/</kbd> P2 抄球"
+        : "<kbd>WASD</kbd> 移動　 <kbd>Space</kbd> 蓄力投籃　 <kbd>Shift</kbd> 衝刺";
+    }
+    const duoPanel = document.querySelector(".mode-duo");
+    duoPanel?.classList.toggle("active", duo);
+    const duoButton = duoPanel?.querySelector("button");
+    if (duoButton) duoButton.textContent = duo ? "已選擇　✓" : "開始　›";
+    const helpItems = document.querySelectorAll("#helpGrid > div");
+    const helpControls = duo
+      ? [["W A S D", "P1 移動"], ["Space", "P1 蓄力投籃"], ["↑ ↓ ← →", "P2 移動"], ["Enter / /", "P2 投籃／抄球"]]
+      : [["W A S D", "移動喵白白"], ["Space", "按住蓄力，放開出手"], ["Shift", "消耗體力衝刺"], ["Q / E / R / F", "施放必殺技能"]];
+    helpItems.forEach((item, index) => {
+      if (!helpControls[index]) return;
+      const key = item.querySelector("kbd");
+      const title = item.querySelector("strong");
+      if (key) key.textContent = helpControls[index][0];
+      if (title) title.textContent = helpControls[index][1];
+    });
+    const helpDescription = $("helpDescription");
+    if (helpDescription) helpDescription.textContent = duo
+      ? "雙人模式共用同一球場：P1 用 WASD／Space／X，P2 用方向鍵／Enter／/；投失後靠近籃板取得下一回合。"
+      : "手機玩家可以使用畫面上的搖桿和動作按鈕。投籃時讓指針停在綠色區域，會更容易命中。";
   }
 
   function selectCharacter(character) {
@@ -636,23 +836,62 @@
     $("characterRole").textContent = data.role;
     $("characterBio").textContent = data.bio;
     const stage = $("stageCat");
-    stage.textContent = data.emoji;
-    stage.style.background = data.color === "red" ? "linear-gradient(145deg, #ff8e83, #9f3c68)" : "linear-gradient(145deg, #4e97fb, #2d4abb)";
+    const stageImage = $("stageCatImage");
+    stageImage.src = data.asset;
+    stageImage.alt = data.name;
+    stage.dataset.number = data.number;
+    ui.playerAvatar.src = data.asset;
+    ui.playerAvatar.alt = data.name;
+    ui.playerName.textContent = `P1 · ${data.name}`;
+    ui.playerTeam.textContent = data.role.split("·")[0].trim();
+    const playerAvatarBackground = {
+      red: "linear-gradient(150deg, #ff8e83, #9f3c68)",
+      teal: "linear-gradient(150deg, #36d7ce, #167897)",
+      purple: "linear-gradient(150deg, #b07bff, #4b2a8d)",
+      blue: "linear-gradient(150deg, #4e97fb, #2d4abb)",
+    };
+    ui.playerAvatar.parentElement.style.background = playerAvatarBackground[data.color] || playerAvatarBackground.blue;
+    ui.playerStatusAvatar.src = data.asset;
+    ui.playerStatusAvatar.alt = data.name;
+    ui.statusPlayerName.textContent = data.name;
+    ui.statusPlayerRole.textContent = data.role.replace(/^[^·]+·\s*/, "");
+    const stageBackground = {
+      red: "linear-gradient(145deg, #ff8e83, #9f3c68)",
+      teal: "linear-gradient(145deg, #36d7ce, #167897)",
+      purple: "linear-gradient(145deg, #b07bff, #4b2a8d)",
+      blue: "linear-gradient(145deg, #4e97fb, #2d4abb)",
+    };
+    stage.style.background = stageBackground[data.color] || stageBackground.blue;
+    ["statSpeed", "statShot", "statThree", "statDefense"].forEach((id, index) => {
+      $(id).style.width = `${data.stats[index]}%`;
+    });
+    ["starsSpeed", "starsShot", "starsThree", "starsDefense"].forEach((id, index) => {
+      $(id).textContent = data.stars[index];
+    });
     showToast(`${data.name} 已上場`, 900, false);
   }
 
   function updateShotMeter() {
     const pct = Math.round(state.charge * 100);
     ui.shotButton.style.setProperty("--charge", `${pct}%`);
-    ui.shotHint.textContent = `${pct}% · 放開出手`;
+    ui.shotHint.textContent = `${state.chargingShooter === "opponent" ? "P2 " : ""}${pct}% · 放開出手`;
   }
 
   function updateUI(force = false) {
     scoreEls.player.textContent = String(state.score.player).padStart(2, "0");
     scoreEls.opponent.textContent = String(state.score.opponent).padStart(2, "0");
+    const opponent = opponentPresentation[state.mode] || opponentPresentation.quick;
+    const player = characterData[state.character] || characterData.white;
+    ui.opponentName.textContent = `P2 · ${opponent.name}`;
+    ui.opponentTeam.textContent = opponent.team;
+    ui.opponentAvatar.src = opponent.asset;
+    ui.opponentAvatar.alt = opponent.name;
+    ui.opponentAvatar.parentElement.style.background = `linear-gradient(150deg, ${opponent.color}, #24345f)`;
+    ui.playerName.textContent = `P1 · ${player.name}`;
+    ui.playerTeam.textContent = player.role.split("·")[0].trim();
     ui.timer.textContent = formatTime(state.timeLeft);
     ui.period.textContent = String(state.period);
-    if (state.running) ui.status.textContent = state.charging ? "蓄力瞄準中" : (state.possession === "player" ? "進攻回合" : state.possession === "opponent" ? "防守回合" : "爭搶籃板");
+    if (state.running) ui.status.textContent = state.charging ? `${state.chargingShooter === "opponent" ? "P2" : "P1"} 蓄力瞄準中` : (state.possession === "player" ? "進攻回合" : state.possession === "opponent" ? "防守回合" : "爭搶籃板");
     ui.possession.textContent = state.possession === "player" ? "P1 持球" : state.possession === "opponent" ? "P2 持球" : "球在空中";
     ui.possession.style.color = state.possession === "opponent" ? "#ffadb8" : state.possession === "player" ? "#79e4ac" : "#ffd486";
     ui.possession.style.borderColor = state.possession === "opponent" ? "rgba(255, 115, 132, .3)" : state.possession === "player" ? "rgba(83, 224, 161, .26)" : "rgba(255, 198, 93, .3)";
@@ -803,9 +1042,10 @@
 
   function drawPlayers() {
     drawCat(state.player.x, state.player.y, "blue", state.player.facing, state.player.bob, state.possession === "player");
-    drawCat(state.opponent.x, state.opponent.y, "red", state.opponent.facing, state.opponent.bob, state.possession === "opponent");
+    const opponent = opponentPresentation[state.mode] || opponentPresentation.quick;
+    drawCat(state.opponent.x, state.opponent.y, "opponent", state.opponent.facing, state.opponent.bob, state.possession === "opponent");
     drawPlayerTag(state.player.x, state.player.y - 169, "P1", "#4ba4ff", state.possession === "player");
-    drawPlayerTag(state.opponent.x, state.opponent.y - 169, "P2", "#ff6874", state.possession === "opponent");
+    drawPlayerTag(state.opponent.x, state.opponent.y - 169, "P2", opponent.color, state.possession === "opponent");
   }
 
   function drawPlayerTag(x, y, text, color, active) {
@@ -814,19 +1054,21 @@
 
   function drawCat(x, groundY, team, facing, bob, active) {
     const isBlue = team === "blue";
-    const main = isBlue ? "#2f75df" : "#e04c45";
-    const light = isBlue ? "#75bdff" : "#ff8b72";
-    const dark = isBlue ? "#19336f" : "#6d2144";
+    const opponent = opponentPresentation[state.mode] || opponentPresentation.quick;
+    const main = isBlue ? "#2f75df" : opponent.color;
+    const light = isBlue ? "#75bdff" : opponent.color;
+    const dark = isBlue ? "#19336f" : "#35234f";
     const skin = isBlue ? "#fff7ec" : "#f9eee0";
     const bounce = Math.sin(bob) * (active ? 2.8 : 1.3);
     ctx.save(); ctx.translate(x, groundY + bounce); ctx.scale(facing, 1);
     // shadow
     ctx.globalAlpha = .35; ctx.fillStyle = "#111021"; ctx.beginPath(); ctx.ellipse(0, 5, 48, 10, 0, 0, TAU); ctx.fill(); ctx.globalAlpha = 1;
-    const generatedCat = isBlue ? generatedArt.player : generatedArt.opponent;
+    const playerArt = state.character === "calico" ? generatedArt.opponent : state.character === "orange" ? generatedArt.storyOpponent : state.character === "boss" ? generatedArt.bossOpponent : generatedArt.player;
+    const generatedCat = isBlue ? playerArt : (state.mode === "story" ? generatedArt.storyOpponent : state.mode === "boss" ? generatedArt.bossOpponent : generatedArt.opponent);
     if (generatedCat.complete && generatedCat.naturalWidth > 0) {
       ctx.drawImage(generatedCat, -112, -240, 224, 240);
       if (active) {
-        ctx.strokeStyle = isBlue ? "rgba(98, 204, 255, .9)" : "rgba(255, 139, 127, .9)";
+        ctx.strokeStyle = isBlue ? "rgba(98, 204, 255, .9)" : rgba(opponent.color, .9);
         ctx.lineWidth = 2;
         ctx.setLineDash([3, 4]);
         ctx.beginPath(); ctx.ellipse(0, -112, 119, 122, 0, 0, TAU); ctx.stroke();
@@ -875,6 +1117,15 @@
   }
 
   function drawEffects() {
+    const skillVfx = state.skillFlash === "火焰灌籃" ? generatedArt.fireDunkVfx : state.skillFlash === "後撤步三分" ? generatedArt.threePointerVfx : state.skillFlash === "幻影變向" ? generatedArt.crossoverVfx : null;
+    if (skillVfx?.complete && skillVfx.naturalWidth > 0 && state.skillFlashTime > 0) {
+      ctx.save();
+      ctx.globalAlpha = clamp(state.skillFlashTime / .75, 0, 1) * .78;
+      const width = state.skillFlash === "火焰灌籃" ? 264 : 284;
+      const height = state.skillFlash === "火焰灌籃" ? 294 : 284;
+      ctx.drawImage(skillVfx, state.player.x - width / 2, state.player.y - height - 2, width, height);
+      ctx.restore();
+    }
     state.rings.forEach((ring) => { ctx.save(); ctx.globalAlpha = ring.life / ring.maxLife; ctx.strokeStyle = ring.color; ctx.lineWidth = 3; ctx.beginPath(); ctx.arc(ring.x, ring.y, ring.radius, 0, TAU); ctx.stroke(); ctx.restore(); });
     state.particles.forEach((p) => { ctx.save(); ctx.globalAlpha = clamp(p.life / p.maxLife, 0, 1); ctx.fillStyle = p.color; if (p.shape === "star") { drawStar(p.x, p.y, p.size, p.size * .45, 5); } else { ctx.beginPath(); ctx.arc(p.x, p.y, p.size, 0, TAU); ctx.fill(); } ctx.restore(); });
     state.floaters.forEach((f) => { ctx.save(); ctx.globalAlpha = clamp(f.life / f.maxLife, 0, 1); ctx.fillStyle = f.color; ctx.font = "900 17px system-ui"; ctx.textAlign = "center"; ctx.shadowColor = "rgba(0,0,0,.5)"; ctx.shadowBlur = 5; ctx.fillText(f.text, f.x, f.y); ctx.restore(); });
@@ -887,27 +1138,40 @@
       ctx.save(); ctx.fillStyle = "rgba(4, 11, 31, .22)"; ctx.fillRect(0, 0, W, H); ctx.fillStyle = "rgba(231, 242, 255, .88)"; ctx.font = "900 22px system-ui"; ctx.textAlign = "center"; ctx.fillText("準備好上場了嗎？", W / 2, 95); ctx.fillStyle = "rgba(169, 197, 239, .75)"; ctx.font = "700 12px system-ui"; ctx.fillText("按下下方開始按鈕，來一場喵萌街頭對決", W / 2, 118); ctx.restore();
     }
     if (state.gameOver) {
-      ctx.save(); ctx.fillStyle = "rgba(5, 11, 29, .46)"; ctx.fillRect(0, 0, W, H); ctx.fillStyle = "#fff"; ctx.font = "1000 34px system-ui"; ctx.textAlign = "center"; ctx.fillText(state.score.player >= state.score.opponent ? "VICTORY" : "NEXT GAME", W / 2, 120); ctx.fillStyle = "#a8caff"; ctx.font = "800 13px system-ui"; ctx.fillText(`${state.score.player}  —  ${state.score.opponent}`, W / 2, 148); ctx.restore();
+      ctx.save(); ctx.fillStyle = "rgba(5, 11, 29, .46)"; ctx.fillRect(0, 0, W, H);
+      if (state.score.player > state.score.opponent && generatedArt.trophyBadge.complete && generatedArt.trophyBadge.naturalWidth > 0) {
+        ctx.globalAlpha = .92;
+        ctx.drawImage(generatedArt.trophyBadge, W / 2 - 48, 28, 96, 96);
+      }
+      ctx.fillStyle = "#fff"; ctx.font = "1000 34px system-ui"; ctx.textAlign = "center"; ctx.fillText(state.score.player > state.score.opponent ? "VICTORY" : state.score.player === state.score.opponent ? "DRAW" : "NEXT GAME", W / 2, 120); ctx.fillStyle = "#a8caff"; ctx.font = "800 13px system-ui"; ctx.fillText(`${state.score.player}  —  ${state.score.opponent}`, W / 2, 148); ctx.restore();
     }
   }
 
   /* ------------------------------ input wiring ------------------------------ */
 
   function bindHoldButton(button, onDown, onUp) {
-    ["pointerdown"].forEach((type) => button.addEventListener(type, (event) => { event.preventDefault(); button.setPointerCapture?.(event.pointerId); onDown(); }));
-    ["pointerup", "pointercancel", "lostpointercapture"].forEach((type) => button.addEventListener(type, (event) => { event.preventDefault(); onUp(); }));
+    ["pointerdown"].forEach((type) => button.addEventListener(type, (event) => { event.preventDefault(); event.stopPropagation(); button.setPointerCapture?.(event.pointerId); onDown(); }));
+    ["pointerup", "pointercancel", "lostpointercapture"].forEach((type) => button.addEventListener(type, (event) => { event.preventDefault(); event.stopPropagation(); onUp(); }));
   }
 
   window.addEventListener("keydown", (event) => {
     if (["ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight", " ", "Spacebar"].includes(event.key)) event.preventDefault();
     state.keys[event.key] = true;
     if (event.key === " " || event.code === "Space") beginShot();
+    if (event.key === "Enter" && state.mode === "duo") beginOpponentShot();
+    if (event.key === "/" && state.mode === "duo") attemptOpponentSteal();
+    if (event.key.toLowerCase() === "x") attemptSteal();
     if (event.key.toLowerCase() === "q") triggerSkill("火焰灌籃");
     if (event.key.toLowerCase() === "e") triggerSkill("後撤步三分");
     if (event.key.toLowerCase() === "r") triggerSkill("幻影變向");
     if (event.key.toLowerCase() === "f") triggerSkill("流星投籃");
   });
-  window.addEventListener("keyup", (event) => { state.keys[event.key] = false; if (event.key === " " || event.code === "Space") releaseShot(); if (event.key === "Shift") state.sprinting = false; });
+  window.addEventListener("keyup", (event) => {
+    state.keys[event.key] = false;
+    if (event.key === " " || event.code === "Space") releaseShot();
+    if (event.key === "Enter" && state.mode === "duo" && state.chargingShooter === "opponent") releaseShot();
+    if (event.key === "Shift") state.sprinting = false;
+  });
 
   bindHoldButton(ui.shotButton, beginShot, releaseShot);
   bindHoldButton($("sprintButton"), () => { state.sprinting = true; }, () => { state.sprinting = false; });
@@ -944,7 +1208,7 @@
     state.joystick.y = ny;
     joystickStick.style.transform = `translate(calc(-50% + ${Math.cos(angle) * length}px), calc(-50% + ${Math.sin(angle) * length}px))`;
   }
-  joystick.addEventListener("pointerdown", (event) => { event.preventDefault(); joystickPointer = event.pointerId; joystick.setPointerCapture?.(event.pointerId); state.joystick.active = true; updateJoystick(event); });
+  joystick.addEventListener("pointerdown", (event) => { event.preventDefault(); event.stopPropagation(); joystickPointer = event.pointerId; joystick.setPointerCapture?.(event.pointerId); state.joystick.active = true; updateJoystick(event); });
   joystick.addEventListener("pointermove", (event) => { if (joystickPointer === event.pointerId) updateJoystick(event); });
   ["pointerup", "pointercancel", "lostpointercapture"].forEach((type) => joystick.addEventListener(type, (event) => { if (joystickPointer === event.pointerId) { joystickPointer = null; state.joystick.active = false; state.joystick.x = 0; state.joystick.y = 0; joystickStick.style.transform = "translate(-50%, -50%)"; } }));
 
@@ -955,8 +1219,10 @@
   $("helpModal").addEventListener("click", (event) => { if (event.target === $("helpModal")) { $("helpModal").classList.remove("open"); $("helpModal").setAttribute("aria-hidden", "true"); } });
 
   document.querySelectorAll(".mode-card").forEach((button) => button.addEventListener("click", () => setMode(button.dataset.mode)));
-  $("mode-duo")?.addEventListener("click", () => setMode("duo"));
-  document.querySelectorAll(".mode-duo button").forEach((button) => button.addEventListener("click", () => { showToast("雙人對戰即將開放，先和 AI 熱身吧！", 1600); }));
+  document.querySelectorAll(".mode-duo button").forEach((button) => button.addEventListener("click", () => {
+    setMode(button.dataset.mode);
+    showToast("雙人對戰：P1 用 WASD／Space，P2 用方向鍵／Enter，/ 可抄球", 2200);
+  }));
   document.querySelectorAll(".character-tab").forEach((button) => button.addEventListener("click", () => selectCharacter(button.dataset.character)));
   document.querySelectorAll(".skill-card").forEach((button) => button.addEventListener("click", () => triggerSkill(button.dataset.skill)));
 
