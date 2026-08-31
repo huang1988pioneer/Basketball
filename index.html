@@ -1,0 +1,201 @@
+<!doctype html>
+<html lang="zh-Hant">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="theme-color" content="#07142d" />
+    <meta
+      name="description"
+      content="喵萌籃球大作戰：一個可直接遊玩的 2D 街頭籃球 prototype。"
+    />
+    <title>喵萌籃球大作戰 · 2D Street Hoops</title>
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <div class="app-shell">
+      <div class="ambient ambient-one"></div>
+      <div class="ambient ambient-two"></div>
+
+      <header class="topbar">
+        <a class="brand" href="#top" aria-label="回到首頁">
+          <span class="brand-badge" aria-hidden="true">🐾</span>
+          <span class="brand-copy">
+            <strong>喵萌籃球大作戰</strong>
+            <small>2D STREET HOOPS · PLAYABLE PROTOTYPE</small>
+          </span>
+        </a>
+        <div class="topbar-actions">
+          <div class="live-pill"><i></i> 遊戲原型 v0.1</div>
+          <button class="icon-button" id="soundToggle" type="button" aria-label="切換音效" aria-pressed="true">
+            <span class="sound-on">🔊</span><span class="sound-off">🔇</span>
+          </button>
+          <button class="ghost-button" id="howToPlay" type="button">操作說明</button>
+        </div>
+      </header>
+
+      <main id="top">
+        <section class="hero-grid">
+          <div class="game-column">
+            <div class="game-card glass-card">
+              <div class="game-card-topline">
+                <div class="court-label"><span class="label-dot"></span> NEON ROOFTOP · NIGHT COURT</div>
+                <div class="match-label" id="matchLabel">快速比賽　•　11 分制</div>
+              </div>
+
+              <div class="scoreboard" aria-live="polite">
+                <div class="team-score team-score-blue">
+                  <div class="team-avatar avatar-blue">🐱</div>
+                  <div class="team-meta"><span>P1 · 喵白白</span><small>BLUE PAWS</small></div>
+                  <strong id="playerScore">00</strong>
+                </div>
+                <div class="scoreboard-center">
+                  <div class="period-label">第 <span id="periodNumber">1</span> 節</div>
+                  <div class="timer" id="gameTimer">01:30</div>
+                  <div class="score-status" id="scoreStatus">準備開球</div>
+                </div>
+                <div class="team-score team-score-red">
+                  <strong id="opponentScore">00</strong>
+                  <div class="team-meta team-meta-right"><span>P2 · 喵布布</span><small>RED CLAWS</small></div>
+                  <div class="team-avatar avatar-red">🐈</div>
+                </div>
+              </div>
+
+              <div class="court-frame" id="courtFrame">
+                <canvas id="gameCanvas" width="1280" height="720" aria-label="2D 籃球場遊戲畫面"></canvas>
+                <div class="canvas-vignette"></div>
+
+                <div class="court-toast" id="courtToast" aria-live="assertive"></div>
+
+                <div class="mobile-controls" aria-label="觸控操作">
+                  <div class="joystick" id="joystick" aria-label="移動搖桿">
+                    <span class="joystick-ring"></span>
+                    <span class="joystick-stick" id="joystickStick"></span>
+                    <span class="joystick-arrow arrow-up">▲</span>
+                    <span class="joystick-arrow arrow-down">▼</span>
+                    <span class="joystick-arrow arrow-left">◀</span>
+                    <span class="joystick-arrow arrow-right">▶</span>
+                  </div>
+                  <div class="action-buttons">
+                    <button class="action-btn action-pass" id="passButton" type="button"><span>🤝</span><b>傳球</b></button>
+                    <button class="action-btn action-steal" id="stealButton" type="button"><span>✋</span><b>抄球</b></button>
+                    <button class="action-btn action-sprint" id="sprintButton" type="button"><span>🏃</span><b>衝刺</b></button>
+                    <button class="action-btn action-shot" id="shotButton" type="button"><span>🏀</span><b>投籃</b><em id="shotButtonHint">按住蓄力</em></button>
+                  </div>
+                </div>
+
+                <div class="desktop-hint"><kbd>WASD</kbd> 移動　 <kbd>Space</kbd> 蓄力投籃　 <kbd>Shift</kbd> 衝刺</div>
+              </div>
+
+              <div class="game-card-footer">
+                <div class="game-state-copy">
+                  <span class="state-icon" id="stateIcon">🎮</span>
+                  <div><strong id="stateTitle">準備好上場了嗎？</strong><small id="stateDescription">抓準綠色甜蜜點，來一記漂亮的三分球。</small></div>
+                </div>
+                <div class="footer-actions">
+                  <button class="secondary-button" id="resetButton" type="button">重新開始</button>
+                  <button class="primary-button" id="startButton" type="button"><span>▶</span> 開始比賽</button>
+                </div>
+              </div>
+            </div>
+
+            <div class="tip-strip glass-card">
+              <span class="tip-spark">✦</span>
+              <p><strong>小提示</strong>　投籃力量落在綠色區域，命中率最高；靠近三分線外出手可得 3 分。</p>
+              <span class="tip-key">TIP 01</span>
+            </div>
+          </div>
+
+          <aside class="right-rail">
+            <section class="panel glass-card feature-panel">
+              <div class="panel-heading"><span class="panel-kicker">01</span><h2>遊戲特色</h2><span class="heading-line"></span></div>
+              <div class="feature-list">
+                <div class="feature-row"><span class="feature-icon icon-gold">⚡</span><div><strong>簡單操作，輕鬆上手</strong><p>方向鍵＋四個動作鍵，馬上開始街頭對決。</p></div></div>
+                <div class="feature-row"><span class="feature-icon icon-green">◎</span><div><strong>精準投籃，挑戰手感</strong><p>蓄力對準綠色區域，享受每次空心入網。</p></div></div>
+                <div class="feature-row"><span class="feature-icon icon-blue">✦</span><div><strong>必殺技能，逆轉比賽</strong><p>累積能量後釋放火焰灌籃與急停三分。</p></div></div>
+                <div class="feature-row"><span class="feature-icon icon-pink">◆</span><div><strong>可愛角色，多變造型</strong><p>解鎖球衣、籃球和鞋子，打造專屬球星。</p></div></div>
+              </div>
+            </section>
+
+            <section class="panel glass-card shot-panel">
+              <div class="panel-heading"><span class="panel-kicker">02</span><h2>投籃系統</h2><span class="heading-line"></span></div>
+              <div class="shot-steps">
+                <div class="shot-step"><span class="step-number">1</span><span class="step-visual ball-visual">🏀<i>⌁</i></span><strong>按住投籃</strong></div>
+                <span class="step-arrow">›</span>
+                <div class="shot-step"><span class="step-number">2</span><span class="power-visual"><i></i><b></b><em></em></span><strong>調整力量</strong></div>
+                <span class="step-arrow">›</span>
+                <div class="shot-step"><span class="step-number">3</span><span class="step-visual ball-visual">🏀</span><strong>放開按鈕</strong></div>
+                <span class="step-arrow">›</span>
+                <div class="shot-step"><span class="step-number">4</span><span class="step-visual perfect-visual">PERFECT!</span><strong>投籃出手</strong></div>
+              </div>
+              <div class="meter-explain"><span class="meter-green"></span><span class="meter-label">綠色甜蜜點＝高命中率</span><span class="meter-green"></span></div>
+            </section>
+
+            <section class="panel glass-card status-panel">
+              <div class="status-top"><div><span class="panel-kicker">LIVE</span><h2>球員狀態</h2></div><span class="possession-pill" id="possessionPill">P1 持球</span></div>
+              <div class="status-player"><div class="mini-avatar mini-blue">🐱</div><div class="status-player-info"><strong>喵白白</strong><span>控球後衛 · Lv. 5</span></div><div class="energy-orb"><span id="energyValue">68</span><small>ENERGY</small></div></div>
+              <div class="status-bars">
+                <div class="status-bar-row"><span>體力</span><div class="bar"><i id="staminaBar" style="width:86%"></i></div><b id="staminaText">86/100</b></div>
+                <div class="status-bar-row"><span>必殺</span><div class="bar bar-energy"><i id="energyBar" style="width:68%"></i></div><b id="energyText">68%</b></div>
+              </div>
+            </section>
+          </aside>
+        </section>
+
+        <section class="lower-grid">
+          <section class="panel glass-card character-panel">
+            <div class="panel-heading"><span class="panel-kicker">03</span><h2>角色設定</h2><span class="heading-line"></span><button class="text-button" type="button">查看全部　›</button></div>
+            <div class="character-content">
+              <div class="character-tabs" role="tablist" aria-label="選擇角色">
+                <button class="character-tab active" data-character="white" type="button"><span class="character-portrait portrait-white">🐱</span><span><b>喵白白</b><small>控球型</small></span></button>
+                <button class="character-tab" data-character="calico" type="button"><span class="character-portrait portrait-calico">🐈</span><span><b>喵布布</b><small>進攻型</small></span></button>
+              </div>
+              <div class="character-stage"><div class="stage-glow"></div><div class="stage-cat" id="stageCat">🐱</div><div class="stage-shadow"></div></div>
+              <div class="character-bio"><div class="bio-head"><div><strong id="characterName">喵白白</strong><span id="characterRole">BLUE PAWS · 控球後衛</span></div><span class="level-badge">Lv. 5</span></div><p id="characterBio">靈活的街頭控衛，擅長後撤步和快速變向。</p><div class="stat-grid"><div><span>速度</span><i><b style="width:76%"></b></i><em>★★★★☆</em></div><div><span>投籃</span><i><b style="width:82%"></b></i><em>★★★★☆</em></div><div><span>三分</span><i><b style="width:68%"></b></i><em>★★★☆☆</em></div><div><span>防守</span><i><b style="width:58%"></b></i><em>★★★☆☆</em></div></div></div>
+            </div>
+          </section>
+
+          <section class="panel glass-card skills-panel">
+            <div class="panel-heading"><span class="panel-kicker">04</span><h2>必殺技能</h2><span class="heading-line"></span><span class="energy-note">能量滿格即可施放</span></div>
+            <div class="skill-grid">
+              <button class="skill-card skill-fire" data-skill="火焰灌籃" type="button"><span class="skill-art">🔥</span><span><b>火焰灌籃</b><small>籃下衝刺，撞開防守</small></span><kbd>Q</kbd></button>
+              <button class="skill-card skill-blue" data-skill="後撤步三分" type="button"><span class="skill-art">💠</span><span><b>後撤步三分</b><small>拉開距離，命中＋25%</small></span><kbd>E</kbd></button>
+              <button class="skill-card skill-purple" data-skill="幻影變向" type="button"><span class="skill-art">🌀</span><span><b>幻影變向</b><small>短暫無敵，甩開對手</small></span><kbd>R</kbd></button>
+              <button class="skill-card skill-pink" data-skill="流星投籃" type="button"><span class="skill-art">☄️</span><span><b>流星投籃</b><small>超遠距離，三分特效</small></span><kbd>F</kbd></button>
+            </div>
+          </section>
+
+          <section class="panel glass-card modes-panel">
+            <div class="panel-heading"><span class="panel-kicker">05</span><h2>遊戲模式</h2><span class="heading-line"></span></div>
+            <div class="mode-grid">
+              <button class="mode-card mode-quick active" data-mode="quick" type="button"><span class="mode-icon">🏀</span><span><b>快速比賽</b><small>來場 90 秒對決</small></span><i>›</i></button>
+              <button class="mode-card mode-story" data-mode="story" type="button"><span class="mode-icon">📖</span><span><b>故事模式</b><small>挑戰各種街頭隊伍</small></span><i>›</i></button>
+              <button class="mode-card mode-challenge" data-mode="challenge" type="button"><span class="mode-icon">🏆</span><span><b>挑戰模式</b><small>完成任務拿獎勵</small></span><i>›</i></button>
+              <button class="mode-card mode-boss" data-mode="boss" type="button"><span class="mode-icon">👾</span><span><b>Boss 挑戰</b><small>與街頭巨星一決高下</small></span><i>›</i></button>
+            </div>
+            <div class="mode-duo"><span>👥</span><div><b>雙人對戰</b><small>和好友一起組隊上場</small></div><button type="button" data-mode="duo">邀請　›</button></div>
+          </section>
+
+          <section class="panel glass-card progression-panel">
+            <div class="panel-heading"><span class="panel-kicker">06</span><h2>遊戲進程</h2><span class="heading-line"></span><span class="season-chip">SEASON 01</span></div>
+            <div class="progress-track"><div class="progress-line"><i style="width:52%"></i></div><div class="milestone reached"><span>🏆</span><b>新手賽</b><small>已完成</small></div><div class="milestone reached"><span>🎖️</span><b>街頭聯賽</b><small>已完成</small></div><div class="milestone current"><span>🛡️</span><b>城市盃賽</b><small>進行中</small></div><div class="milestone"><span>♛</span><b>全國大賽</b><small>鎖定</small></div><div class="milestone"><span>🏆</span><b>世界冠軍</b><small>鎖定</small></div></div>
+          </section>
+        </section>
+      </main>
+
+      <footer class="footer"><span>© 2026 PAW STREET STUDIO</span><span>Prototype built for touch + keyboard · <a href="#top">回到頂部 ↑</a></span></footer>
+    </div>
+
+    <div class="modal-backdrop" id="helpModal" aria-hidden="true">
+      <div class="help-modal" role="dialog" aria-modal="true" aria-labelledby="helpTitle">
+        <button class="modal-close" id="closeHelp" type="button" aria-label="關閉">×</button>
+        <span class="modal-eyebrow">HOW TO PLAY</span><h2 id="helpTitle">三十秒學會投籃</h2>
+        <div class="help-grid"><div><kbd>W A S D</kbd><strong>移動喵白白</strong></div><div><kbd>Space</kbd><strong>按住蓄力，放開出手</strong></div><div><kbd>Shift</kbd><strong>消耗體力衝刺</strong></div><div><kbd>Q / E / R / F</kbd><strong>施放必殺技能</strong></div></div>
+        <p>手機玩家可以使用畫面上的搖桿和動作按鈕。投籃時讓指針停在綠色區域，會更容易命中。</p>
+        <button class="primary-button modal-start" id="modalStart" type="button">知道了，開始比賽　▶</button>
+      </div>
+    </div>
+
+    <div class="toast" id="globalToast" role="status" aria-live="polite"></div>
+    <script src="game.js"></script>
+  </body>
+</html>
