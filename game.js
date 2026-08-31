@@ -15,6 +15,19 @@
   const floor = { horizon: 292, baseline: 575, left: 35, right: 1245 };
   const hoop = { x: 1072, y: 345, rimY: 355 };
 
+  // The Godot build and the browser build share the same generated art.  The
+  // canvas still keeps its procedural fallback so the game remains playable
+  // when opened offline before the PNGs finish loading.
+  const generatedArt = {
+    court: new Image(),
+    player: new Image(),
+    opponent: new Image(),
+  };
+  generatedArt.court.src = "assets/generated-rooftop-court-v2.png";
+  generatedArt.player.src = "assets/generated-white-cat.png";
+  generatedArt.opponent.src = "assets/generated-calico-cat.png";
+  Object.values(generatedArt).forEach((image) => image.addEventListener("load", () => draw()));
+
   const $ = (id) => document.getElementById(id);
   const scoreEls = { player: $("playerScore"), opponent: $("opponentScore") };
   const ui = {
@@ -84,11 +97,11 @@
   };
 
   const modeData = {
-    quick: { name: "快速比賽", duration: 90, label: "快速比賽　•　11 分制" },
-    story: { name: "故事模式", duration: 75, label: "故事模式　•　街區挑戰" },
-    challenge: { name: "挑戰模式", duration: 60, label: "挑戰模式　•　限時任務" },
-    boss: { name: "Boss 挑戰", duration: 120, label: "Boss 挑戰　•　巨星來襲" },
-    duo: { name: "雙人對戰", duration: 90, label: "雙人對戰　•　同屏對決" },
+    quick: { name: "快速比賽", duration: 90, target: 11, opponentAccuracy: .46, opponentSpeed: 150, label: "快速比賽　•　先得 11 分" },
+    story: { name: "故事模式", duration: 105, target: 15, opponentAccuracy: .50, opponentSpeed: 158, label: "故事模式　•　先得 15 分" },
+    challenge: { name: "挑戰模式", duration: 60, target: 18, opponentAccuracy: .55, opponentSpeed: 168, label: "挑戰模式　•　60 秒得 18 分" },
+    boss: { name: "Boss 挑戰", duration: 120, target: 21, opponentAccuracy: .67, opponentSpeed: 185, label: "Boss 挑戰　•　決戰 21 分" },
+    duo: { name: "雙人對戰", duration: 90, target: 11, opponentAccuracy: .46, opponentSpeed: 150, label: "雙人對戰　•　先得 11 分" },
   };
 
   const skyline = [
@@ -240,7 +253,8 @@
     ui.start.classList.remove("is-running");
     ui.stateIcon.textContent = playerWon ? "🏆" : "💪";
     ui.stateTitle.textContent = playerWon ? "漂亮！拿下勝利" : "差一點點，再來一次";
-    ui.stateDescription.textContent = reason === "target" ? "先到 11 分的隊伍贏得街頭榮耀。" : "時間到！調整出手節奏，再挑戰一次。";
+    const target = modeData[state.mode].target;
+    ui.stateDescription.textContent = reason === "target" ? `先到 ${target} 分的隊伍贏得街頭榮耀。` : "時間到！調整出手節奏，再挑戰一次。";
     ui.status.textContent = "比賽結束";
     showToast(playerWon ? "🏆 勝利！喵白白稱霸球場！" : "終場！下一球一定更準。", 2800);
     burst(hoop.x, hoop.rimY - 9, playerWon ? "#ffd46b" : "#77bcff", 34);
@@ -268,7 +282,8 @@
     updateOpponentAI(dt);
 
     if (state.timeLeft <= 0) endGame("time");
-    if (state.score.player >= 11 || state.score.opponent >= 11) endGame("target");
+    const target = modeData[state.mode].target;
+    if (state.score.player >= target || state.score.opponent >= target) endGame("target");
     updateUI();
   }
 
@@ -309,7 +324,7 @@
     const dx = targetX - o.x;
     const dy = targetY - o.y;
     const dist = Math.hypot(dx, dy) || 1;
-    const speed = state.mode === "boss" ? 185 : 150;
+    const speed = modeData[state.mode].opponentSpeed;
     o.x = clamp(o.x + dx / dist * speed * dt, 170, 1120);
     o.y = clamp(o.y + dy / dist * speed * .38 * dt, 445, 569);
     if (Math.abs(dx) > 2) o.facing = dx > 0 ? 1 : -1;
@@ -479,7 +494,7 @@
   }
 
   function resolveOpponentShot(flight) {
-    const chance = state.mode === "boss" ? .63 : .46;
+    const chance = modeData[state.mode].opponentAccuracy;
     const made = Math.random() < chance;
     if (made) {
       const points = flight.distance > 540 ? 3 : 2;
@@ -600,6 +615,10 @@
 
   function setMode(mode) {
     if (!modeData[mode]) return;
+    if (state.running) {
+      showToast("請先暫停比賽，再切換模式。", 1200, false);
+      return;
+    }
     document.querySelectorAll(".mode-card").forEach((button) => button.classList.toggle("active", button.dataset.mode === mode));
     state.mode = mode;
     state.modeName = modeData[mode].name;
@@ -655,8 +674,14 @@
   function draw() {
     ctx.save();
     if (state.screenShake > 0) ctx.translate((Math.random() - .5) * 5 * state.screenShake / .24, (Math.random() - .5) * 4 * state.screenShake / .24);
-    drawSky();
-    drawCourt();
+    if (generatedArt.court.complete && generatedArt.court.naturalWidth > 0) {
+      ctx.drawImage(generatedArt.court, 0, 0, W, H);
+      ctx.fillStyle = "rgba(4, 11, 31, .10)";
+      ctx.fillRect(0, 0, W, H);
+    } else {
+      drawSky();
+      drawCourt();
+    }
     drawHoop();
     drawAimGuide();
     drawPlayers();
@@ -797,6 +822,19 @@
     ctx.save(); ctx.translate(x, groundY + bounce); ctx.scale(facing, 1);
     // shadow
     ctx.globalAlpha = .35; ctx.fillStyle = "#111021"; ctx.beginPath(); ctx.ellipse(0, 5, 48, 10, 0, 0, TAU); ctx.fill(); ctx.globalAlpha = 1;
+    const generatedCat = isBlue ? generatedArt.player : generatedArt.opponent;
+    if (generatedCat.complete && generatedCat.naturalWidth > 0) {
+      ctx.drawImage(generatedCat, -112, -240, 224, 240);
+      if (active) {
+        ctx.strokeStyle = isBlue ? "rgba(98, 204, 255, .9)" : "rgba(255, 139, 127, .9)";
+        ctx.lineWidth = 2;
+        ctx.setLineDash([3, 4]);
+        ctx.beginPath(); ctx.ellipse(0, -112, 119, 122, 0, 0, TAU); ctx.stroke();
+        ctx.setLineDash([]);
+      }
+      ctx.restore();
+      return;
+    }
     // tail
     ctx.strokeStyle = skin; ctx.lineWidth = 13; ctx.lineCap = "round"; ctx.beginPath(); ctx.moveTo(-31, -72); ctx.bezierCurveTo(-69, -101, -64, -145, -29, -137); ctx.stroke(); ctx.strokeStyle = dark; ctx.lineWidth = 5; ctx.beginPath(); ctx.moveTo(-31, -72); ctx.bezierCurveTo(-69, -101, -64, -145, -29, -137); ctx.stroke();
     // legs and shoes
@@ -828,6 +866,7 @@
   function drawBall() {
     const b = state.ball;
     if (!b) return;
+    if (generatedArt.player.complete && generatedArt.player.naturalWidth > 0 && !b.inFlight && !b.loose) return;
     ctx.save();
     const glow = ctx.createRadialGradient(b.x - 3, b.y - 3, 1, b.x, b.y, b.r * 2.7); glow.addColorStop(0, "rgba(255, 189, 77, .25)"); glow.addColorStop(1, "rgba(255, 152, 28, 0)"); ctx.fillStyle = glow; ctx.beginPath(); ctx.arc(b.x, b.y, b.r * 2.7, 0, TAU); ctx.fill();
     const ballGradient = ctx.createRadialGradient(b.x - 5, b.y - 6, 2, b.x, b.y, b.r); ballGradient.addColorStop(0, "#ffc66a"); ballGradient.addColorStop(.45, "#ed7d27"); ballGradient.addColorStop(1, "#b43e1d"); ctx.fillStyle = ballGradient; ctx.beginPath(); ctx.arc(b.x, b.y, b.r, 0, TAU); ctx.fill();

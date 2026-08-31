@@ -18,7 +18,7 @@
 
       <header class="topbar">
         <a class="brand" href="#top" aria-label="回到首頁">
-          <span class="brand-badge" aria-hidden="true">🐾</span>
+          <span class="brand-badge" aria-hidden="true"><img src="assets/generated-title-emblem.png" alt="" /></span>
           <span class="brand-copy">
             <strong>喵萌籃球大作戰</strong>
             <small>2D STREET HOOPS · PLAYABLE PROTOTYPE</small>
@@ -44,7 +44,7 @@
 
               <div class="scoreboard" aria-live="polite">
                 <div class="team-score team-score-blue">
-                  <div class="team-avatar avatar-blue">🐱</div>
+                  <div class="team-avatar avatar-blue"><img src="assets/generated-white-cat.png" alt="" /></div>
                   <div class="team-meta"><span>P1 · 喵白白</span><small>BLUE PAWS</small></div>
                   <strong id="playerScore">00</strong>
                 </div>
@@ -56,7 +56,7 @@
                 <div class="team-score team-score-red">
                   <strong id="opponentScore">00</strong>
                   <div class="team-meta team-meta-right"><span>P2 · 喵布布</span><small>RED CLAWS</small></div>
-                  <div class="team-avatar avatar-red">🐈</div>
+                  <div class="team-avatar avatar-red"><img src="assets/generated-calico-cat.png" alt="" /></div>
                 </div>
               </div>
 
@@ -118,21 +118,15 @@
 
             <section class="panel glass-card shot-panel">
               <div class="panel-heading"><span class="panel-kicker">02</span><h2>投籃系統</h2><span class="heading-line"></span></div>
-              <div class="shot-steps">
-                <div class="shot-step"><span class="step-number">1</span><span class="step-visual ball-visual">🏀<i>⌁</i></span><strong>按住投籃</strong></div>
-                <span class="step-arrow">›</span>
-                <div class="shot-step"><span class="step-number">2</span><span class="power-visual"><i></i><b></b><em></em></span><strong>調整力量</strong></div>
-                <span class="step-arrow">›</span>
-                <div class="shot-step"><span class="step-number">3</span><span class="step-visual ball-visual">🏀</span><strong>放開按鈕</strong></div>
-                <span class="step-arrow">›</span>
-                <div class="shot-step"><span class="step-number">4</span><span class="step-visual perfect-visual">PERFECT!</span><strong>投籃出手</strong></div>
+              <div class="shot-steps generated-shot-guide">
+                <img class="shot-guide-art" src="assets/generated-shooting-guide.png" alt="投籃四步：按住投籃、調整力量、放開按鈕、投籃出手" />
               </div>
               <div class="meter-explain"><span class="meter-green"></span><span class="meter-label">綠色甜蜜點＝高命中率</span><span class="meter-green"></span></div>
             </section>
 
             <section class="panel glass-card status-panel">
               <div class="status-top"><div><span class="panel-kicker">LIVE</span><h2>球員狀態</h2></div><span class="possession-pill" id="possessionPill">P1 持球</span></div>
-              <div class="status-player"><div class="mini-avatar mini-blue">🐱</div><div class="status-player-info"><strong>喵白白</strong><span>控球後衛 · Lv. 5</span></div><div class="energy-orb"><span id="energyValue">68</span><small>ENERGY</small></div></div>
+              <div class="status-player"><div class="mini-avatar mini-blue"><img src="assets/generated-white-cat.png" alt="" /></div><div class="status-player-info"><strong>喵白白</strong><span>控球後衛 · Lv. 5</span></div><div class="energy-orb"><span id="energyValue">68</span><small>ENERGY</small></div></div>
               <div class="status-bars">
                 <div class="status-bar-row"><span>體力</span><div class="bar"><i id="staminaBar" style="width:86%"></i></div><b id="staminaText">86/100</b></div>
                 <div class="status-bar-row"><span>必殺</span><div class="bar bar-energy"><i id="energyBar" style="width:68%"></i></div><b id="energyText">68%</b></div>

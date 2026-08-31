@@ -31,4 +31,4 @@ godot --path .
 - `main.tscn`：主場景
 - `assets/`：角色、球場、技能與介面生成素材
 - `artifacts/basketball-final-game.png`：最新遊戲預覽
-- `index.html`、`game.js`、`styles.css`：瀏覽器版概念原型
+- `index.html`、`game.js`、`styles.css`：瀏覽器版可玩原型（載入與 Godot 版共用的生成夜景與角色 PNG，並保留離線向量 fallback）
