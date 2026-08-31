@@ -97,6 +97,9 @@ var opponent_think := 1.5
 var opponent_shot_cooldown := 0.0
 var opponent_defense_cooldown := 0.0
 var next_shot_bonus := 0.0
+var combo := 0
+var best_combo := 0
+var combo_timer := 0.0
 var sprinting := false
 var joystick_active := false
 var joystick := Vector2.ZERO
@@ -322,6 +325,9 @@ func update_game(dt: float) -> void:
 	shot_cooldown = max(0.0, shot_cooldown - dt)
 	opponent_shot_cooldown = max(0.0, opponent_shot_cooldown - dt)
 	opponent_defense_cooldown = max(0.0, opponent_defense_cooldown - dt)
+	combo_timer = maxf(0.0, combo_timer - dt)
+	if combo_timer <= 0.0:
+		combo = 0
 	player["dash"] = max(0.0, player["dash"] - dt)
 	opponent["dash"] = max(0.0, opponent["dash"] - dt)
 	skill_flash_timer = max(0.0, skill_flash_timer - dt)
@@ -618,14 +624,20 @@ func resolve_player_shot() -> void:
 	next_shot_bonus = 0.0
 	if made:
 		var points := 3 if float(flight["distance"]) > 535.0 else 2
+		combo += 1
+		best_combo = maxi(best_combo, combo)
+		combo_timer = 4.0
 		score_player += points
 		energy = clamp(energy + 12.0, 0.0, 100.0)
 		rings.append({"x": HOOP.x, "y": RIM_Y, "radius": 18.0, "speed": 115.0, "life": .7, "max_life": .7, "color": BLUE_LIGHT if points == 3 else GOLD})
 		burst(HOOP.x, RIM_Y, BLUE_LIGHT if points == 3 else GOLD, 25 if points == 3 else 18)
 		add_floater("+%d  %s" % [points, "三分命中！" if points == 3 else "漂亮！"], HOOP.x - 35.0, RIM_Y - 52.0, BLUE_LIGHT if points == 3 else GOLD)
+		if combo >= 2:
+			add_floater("連續命中 x%d" % combo, HOOP.x - 22.0, RIM_Y - 84.0, PURPLE)
 		show_message("🌟 三分命中！" if points == 3 else "🏀 兩分拿下！", 1.8)
 		reset_after_score("opponent")
 	else:
+		break_combo()
 		add_floater("籃框彈出", HOOP.x - 27.0, RIM_Y - 43.0, Color("ffb0b9"))
 		show_message("差一點！調整蓄力再試一次。", 1.4)
 		make_loose_ball(HOOP.x - 12.0, RIM_Y + 12.0, -150.0, -205.0)
@@ -639,6 +651,7 @@ func resolve_opponent_shot() -> void:
 	var made := randf() < shot_chance
 	if made:
 		var points := 3 if float(flight["distance"]) > 535.0 else 2
+		break_combo()
 		score_opponent += points
 		rings.append({"x": HOOP.x, "y": RIM_Y, "radius": 18.0, "speed": 108.0, "life": .6, "max_life": .6, "color": opponent_color()})
 		burst(HOOP.x, RIM_Y, opponent_color().lightened(.18), 15)
@@ -848,6 +861,9 @@ func reset_game(keep_mode: bool = true) -> void:
 	opponent_shot_cooldown = 0.0
 	opponent_defense_cooldown = 0.0
 	next_shot_bonus = 0.0
+	combo = 0
+	best_combo = 0
+	combo_timer = 0.0
 	sprinting = false
 	joystick = Vector2.ZERO
 	joystick_active = false
@@ -937,6 +953,13 @@ func restart_match() -> void:
 func show_message(value: String, duration: float = 1.5) -> void:
 	message = value
 	message_timer = duration
+
+
+func break_combo() -> void:
+	if combo >= 2:
+		add_floater("連段中斷", float(player["x"]), float(player["y"]) - 128.0, Color("ffb5c4"))
+	combo = 0
+	combo_timer = 0.0
 
 
 func burst(x: float, y: float, color: Color, count: int = 16) -> void:
@@ -1152,7 +1175,7 @@ func draw_game_over_overlay() -> void:
 	centered_text("終場", Vector2(463.0, 304.0), 210.0, 13, BLUE_LIGHT)
 	centered_text(result_text, Vector2(463.0, 333.0), 350.0, 23, result_color)
 	centered_text("%02d  —  %02d" % [score_player, score_opponent], Vector2(463.0, 374.0), 280.0, 30, TEXT)
-	centered_text(String(mode_data[mode]["name"]), Vector2(463.0, 401.0), 220.0, 9, MUTED)
+	centered_text("%s  ·  最高連段 x%d" % [String(mode_data[mode]["name"]), best_combo], Vector2(463.0, 401.0), 300.0, 9, MUTED)
 	button_box(REPLAY_RECT, "↻  再來一場", true)
 
 
@@ -1243,6 +1266,7 @@ func draw_world() -> void:
 	# without changing the actual match state or hitboxes.
 	if generated_art and protagonist_group_texture != null and not running and not game_over:
 		draw_texture_rect(protagonist_group_texture, Rect2(108.0, 258.0, 654.0, 368.0), false, Color(1.0, 1.0, 1.0, .28))
+	draw_combo_badge()
 	draw_hoop()
 	draw_aim_guide()
 	draw_cat(Vector2(float(player["x"]), float(player["y"])), "blue", float(player["facing"]), float(player["bob"]), possession == "player")
@@ -1253,6 +1277,16 @@ func draw_world() -> void:
 	draw_ball()
 	draw_mobile_controls()
 	draw_effects()
+
+
+func draw_combo_badge() -> void:
+	if not running or combo < 2:
+		return
+	var progress: float = clampf(combo_timer / 4.0, 0.0, 1.0)
+	var badge := Rect2(54.0, 202.0, 156.0, 32.0)
+	panel(badge, Color(0.31, 0.16, 0.50, .84), Color(0.79, .55, 1.0, .72), 11.0)
+	centered_text("連續命中 x%d" % combo, badge.position + Vector2(78.0, 12.0), 145.0, 12, Color("fff0a8"))
+	draw_rect(Rect2(badge.position + Vector2(8.0, 26.0), Vector2(140.0 * progress, 2.0)), GOLD)
 
 
 func draw_oval(center: Vector2, radius_x: float, radius_y: float, color: Color) -> void:

@@ -120,6 +120,9 @@
     skillFlash: null,
     skillFlashTime: 0,
     nextShotBonus: 0,
+    combo: 0,
+    bestCombo: 0,
+    comboTimer: 0,
   };
 
   const characterData = {
@@ -220,6 +223,12 @@
     state.floaters.push({ text, x, y, life: 1.1, maxLife: 1.1, color });
   }
 
+  function breakCombo() {
+    if (state.combo >= 2) addFloater("連段中斷", state.player.x, state.player.y - 128, "#ffb5c4");
+    state.combo = 0;
+    state.comboTimer = 0;
+  }
+
   function resetGame(keepMode = true) {
     const mode = keepMode ? modeData[state.mode] : modeData.quick;
     state.running = false;
@@ -259,6 +268,9 @@
     state.skillFlash = null;
     state.skillFlashTime = 0;
     state.nextShotBonus = 0;
+    state.combo = 0;
+    state.bestCombo = 0;
+    state.comboTimer = 0;
     ui.matchLabel.textContent = mode.label;
     updateControlsUI();
     updateUI(true);
@@ -301,7 +313,8 @@
     ui.stateIcon.textContent = playerWon ? "🏆" : tied ? "🤝" : "💪";
     ui.stateTitle.textContent = playerWon ? "漂亮！拿下勝利" : tied ? "平手！再來一場" : "差一點點，再來一次";
     const target = modeData[state.mode].target;
-    ui.stateDescription.textContent = reason === "target" ? `先到 ${target} 分的隊伍贏得街頭榮耀。` : "時間到！調整出手節奏，再挑戰一次。";
+    const comboSummary = `最高連段 x${state.bestCombo}`;
+    ui.stateDescription.textContent = reason === "target" ? `先到 ${target} 分的隊伍贏得街頭榮耀。 · ${comboSummary}` : `時間到！調整出手節奏，再挑戰一次。 · ${comboSummary}`;
     ui.status.textContent = "比賽結束";
     const playerName = (characterData[state.character] || characterData.white).name;
     showToast(playerWon ? `🏆 勝利！${playerName}稱霸球場！` : tied ? "🤝 平手！下一場決勝負。" : "終場！下一球一定更準。", 2800);
@@ -317,6 +330,8 @@
     state.shotCooldown = Math.max(0, state.shotCooldown - dt);
     state.opponentShotCooldown = Math.max(0, state.opponentShotCooldown - dt);
     state.opponentDefenseCooldown = Math.max(0, state.opponentDefenseCooldown - dt);
+    state.comboTimer = Math.max(0, state.comboTimer - dt);
+    if (state.comboTimer <= 0) state.combo = 0;
     state.player.dash = Math.max(0, state.player.dash - dt);
     state.opponent.dash = Math.max(0, state.opponent.dash - dt);
     state.screenShake = Math.max(0, state.screenShake - dt);
@@ -447,9 +462,10 @@
   function updateLooseBall(dt) {
     const b = state.ball;
     if (!b.loose || b.inFlight) return;
-    b.y += dt * 170;
     b.x += b.vx * dt;
     b.vx *= Math.pow(.04, dt);
+    b.vy = (b.vy || 0) + 320 * dt;
+    b.y += b.vy * dt;
     b.spin += dt * 14;
     if (b.y > floor.baseline - 25) {
       b.y = floor.baseline - 25;
@@ -463,7 +479,6 @@
         else if (oDist < 115) setPossession("opponent");
       }
     }
-    if (b.vy) { b.vy += 320 * dt; b.y += b.vy * dt; }
   }
 
   function updateOpponentAI(dt) {
@@ -613,16 +628,21 @@
     const made = sweet > .84 || Math.random() < chance;
     if (made) {
       const points = flight.distance > 540 ? 3 : 2;
+      state.combo += 1;
+      state.bestCombo = Math.max(state.bestCombo, state.combo);
+      state.comboTimer = 4;
       state.score.player += points;
       state.energy = clamp(state.energy + 12, 0, 100);
       state.screenShake = .24;
       state.rings.push({ x: hoop.x, y: hoop.rimY, radius: 22, speed: 115, life: .7, maxLife: .7, color: points === 3 ? "#74c9ff" : "#ffd36d" });
       burst(hoop.x, hoop.rimY, points === 3 ? "#86d4ff" : "#ffd36d", points === 3 ? 28 : 20);
       addFloater(`+${points}  ${points === 3 ? "三分命中！" : "漂亮！"}`, hoop.x - 40, hoop.rimY - 50, points === 3 ? "#9edcff" : "#ffe09a");
+      if (state.combo >= 2) addFloater(`連續命中 x${state.combo}`, hoop.x - 28, hoop.rimY - 84, "#d6b2ff");
       showToast(points === 3 ? "🌟 三分命中！" : "🏀 兩分拿下！", 1800);
       playTone(points === 3 ? 780 : 660, .17, "triangle", .042);
       resetAfterScore("opponent");
     } else {
+      breakCombo();
       addFloater("籃框彈出", hoop.x - 30, hoop.rimY - 40, "#ffb1b1");
       showToast("差一點！調整蓄力再試一次。", 1400);
       playTone(190, .1, "sawtooth", .02);
@@ -640,6 +660,7 @@
     const made = Math.random() < chance;
     if (made) {
       const points = flight.distance > 540 ? 3 : 2;
+      breakCombo();
       state.score.opponent += points;
       state.screenShake = .18;
       state.rings.push({ x: hoop.x, y: hoop.rimY, radius: 22, speed: 110, life: .6, maxLife: .6, color: "#ff8e9a" });
@@ -835,6 +856,10 @@
 
   function selectCharacter(character) {
     if (!characterData[character]) return;
+    if (state.running) {
+      showToast("請先暫停比賽，再切換角色。", 1200, false);
+      return;
+    }
     state.character = character;
     document.querySelectorAll(".character-tab").forEach((tab) => tab.classList.toggle("active", tab.dataset.character === character));
     const data = characterData[character];
@@ -935,12 +960,35 @@
       ctx.drawImage(generatedArt.protagonistGroup, 112, 196, 670, 377);
       ctx.restore();
     }
+    drawComboBadge();
     drawHoop();
     drawAimGuide();
     drawPlayers();
     drawBall();
     drawEffects();
     drawCanvasOverlay();
+    ctx.restore();
+  }
+
+  function drawComboBadge() {
+    if (!state.running || state.combo < 2) return;
+    const progress = clamp(state.comboTimer / 4, 0, 1);
+    const x = 54;
+    const y = 202;
+    ctx.save();
+    ctx.fillStyle = "rgba(80, 42, 130, .84)";
+    ctx.strokeStyle = "rgba(215, 176, 255, .72)";
+    ctx.lineWidth = 1;
+    roundRect(ctx, x, y, 156, 32, 11);
+    ctx.fill();
+    ctx.stroke();
+    ctx.fillStyle = "#fff0a8";
+    ctx.font = "900 12px system-ui";
+    ctx.textAlign = "center";
+    ctx.fillText(`連續命中 x${state.combo}`, x + 78, y + 19);
+    ctx.fillStyle = "#ffd16b";
+    roundRect(ctx, x + 8, y + 26, 140 * progress, 2, 1);
+    ctx.fill();
     ctx.restore();
   }
 
