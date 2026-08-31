@@ -32,7 +32,7 @@ godot --path .
 
 - `scripts/main.gd`：遊戲邏輯、AI、輸入與介面繪製
 - `main.tscn`：主場景
-- `assets/`：角色、球場、技能、透明必殺 VFX、終場獎盃、App icon、啟動畫面與介面生成素材
+- `assets/`：角色、主角群、球場、角色選擇展示、技能展示、透明必殺 VFX、終場獎盃、App icon、啟動畫面與介面生成素材
 - `artifacts/basketball-final-game.png`：最新遊戲預覽
 - `index.html`、`game.js`、`styles.css`：瀏覽器版可玩原型（載入與 Godot 版共用的生成夜景與角色 PNG，並保留離線向量 fallback）
 

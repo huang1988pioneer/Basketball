@@ -45,7 +45,7 @@ const JOYSTICK_RECT := Rect2(58.0, 527.0, 122.0, 122.0)
 const PLAYER_CARD_RECT := Rect2(35.0, 714.0, 520.0, 80.0)
 
 var font: Font
-var court_texture: Texture2D = preload("res://assets/generated-rooftop-court-v2.png")
+var court_texture: Texture2D = preload("res://assets/generated-rooftop-court-v3.png")
 var player_texture: Texture2D = preload("res://assets/generated-white-cat.png")
 var opponent_texture: Texture2D = preload("res://assets/generated-calico-cat.png")
 var story_opponent_texture: Texture2D = preload("res://assets/generated-orange-cat-v2.png")
@@ -63,6 +63,9 @@ var fire_dunk_vfx_texture: Texture2D = preload("res://assets/generated-vfx-fire-
 var three_pointer_vfx_texture: Texture2D = preload("res://assets/generated-vfx-three-pointer-v2.png")
 var crossover_vfx_texture: Texture2D = preload("res://assets/generated-vfx-crossover-v2.png")
 var trophy_badge_texture: Texture2D = preload("res://assets/generated-trophy-badge-v2.png")
+var protagonist_group_texture: Texture2D = preload("res://assets/generated-protagonist-group-v1.png")
+var character_showcase_texture: Texture2D = preload("res://assets/generated-character-showcase-v1.png")
+var skill_showcase_texture: Texture2D = preload("res://assets/generated-skill-showcase-v1.png")
 var generated_art := true
 var running := false
 var game_over := false
@@ -1235,6 +1238,11 @@ func draw_world() -> void:
 			draw_line(Vector2(x, 320.0), Vector2(x, 378.0), Color(0.08, .13, .20, .9), 5.0)
 			draw_circle(Vector2(x, 318.0), 34.0, Color(1.0, .83, .48, .07))
 			draw_oval(Vector2(x, 317.0), 14.0, 5.0, Color("fff0b9"))
+	# At the ready screen, reveal the complete cast behind the playable sprites.
+	# The group plate is transparent, so it feels like a short pre-game lineup
+	# without changing the actual match state or hitboxes.
+	if generated_art and protagonist_group_texture != null and not running and not game_over:
+		draw_texture_rect(protagonist_group_texture, Rect2(108.0, 258.0, 654.0, 368.0), false, Color(1.0, 1.0, 1.0, .28))
 	draw_hoop()
 	draw_aim_guide()
 	draw_cat(Vector2(float(player["x"]), float(player["y"])), "blue", float(player["facing"]), float(player["bob"]), possession == "player")
@@ -1538,6 +1546,12 @@ func draw_bottom_cards() -> void:
 	var bottom_text := INK if generated_art else TEXT
 	var bottom_muted := INK_MUTED if generated_art else MUTED
 	panel(BOTTOM_RECT, bottom_fill, bottom_border, 16.0)
+	# The generated cast and skill plates add illustrated depth to the compact
+	# utility rail while the localized labels remain drawn above them.
+	if generated_art and character_showcase_texture != null:
+		draw_texture_rect(character_showcase_texture, Rect2(111.0, 713.0, 442.0, 84.0), false, Color(1.0, 1.0, 1.0, .11))
+	if generated_art and skill_showcase_texture != null:
+		draw_texture_rect(skill_showcase_texture, Rect2(575.0, 735.0, 292.0, 61.0), false, Color(1.0, 1.0, 1.0, .18))
 	# character card
 	label_text("03  角色設定", Vector2(43.0, 729.0), 11, Color("83b5ff"))
 	draw_circle(Vector2(80.0, 764.0), 25.0, player_color())

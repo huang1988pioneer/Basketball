@@ -29,8 +29,11 @@
     threePointerVfx: new Image(),
     crossoverVfx: new Image(),
     trophyBadge: new Image(),
+    protagonistGroup: new Image(),
+    characterShowcase: new Image(),
+    skillShowcase: new Image(),
   };
-  generatedArt.court.src = "assets/generated-rooftop-court-v2.png";
+  generatedArt.court.src = "assets/generated-rooftop-court-v3.png";
   generatedArt.player.src = "assets/generated-white-cat.png";
   generatedArt.opponent.src = "assets/generated-calico-cat.png";
   generatedArt.storyOpponent.src = "assets/generated-orange-cat-v2.png";
@@ -40,6 +43,9 @@
   generatedArt.threePointerVfx.src = "assets/generated-vfx-three-pointer-v2.png";
   generatedArt.crossoverVfx.src = "assets/generated-vfx-crossover-v2.png";
   generatedArt.trophyBadge.src = "assets/generated-trophy-badge-v2.png";
+  generatedArt.protagonistGroup.src = "assets/generated-protagonist-group-v1.png";
+  generatedArt.characterShowcase.src = "assets/generated-character-showcase-v1.png";
+  generatedArt.skillShowcase.src = "assets/generated-skill-showcase-v1.png";
   Object.values(generatedArt).forEach((image) => image.addEventListener("load", () => draw()));
 
   const $ = (id) => document.getElementById(id);
@@ -920,6 +926,14 @@
     } else {
       drawSky();
       drawCourt();
+    }
+    if (!state.running && !state.gameOver && generatedArt.protagonistGroup.complete && generatedArt.protagonistGroup.naturalWidth > 0) {
+      // Show the full cast on the ready screen only; gameplay keeps the live
+      // sprites unobstructed while the transparent plate acts as a hero lineup.
+      ctx.save();
+      ctx.globalAlpha = .28;
+      ctx.drawImage(generatedArt.protagonistGroup, 112, 196, 670, 377);
+      ctx.restore();
     }
     drawHoop();
     drawAimGuide();
