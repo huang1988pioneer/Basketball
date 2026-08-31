@@ -35,3 +35,7 @@ godot --path .
 - `assets/`：角色、球場、技能、透明必殺 VFX、終場獎盃、App icon、啟動畫面與介面生成素材
 - `artifacts/basketball-final-game.png`：最新遊戲預覽
 - `index.html`、`game.js`、`styles.css`：瀏覽器版可玩原型（載入與 Godot 版共用的生成夜景與角色 PNG，並保留離線向量 fallback）
+
+## 跨平台輸出
+
+最新本機輸出位於 `dist/v1.0.0/`：Windows x86_64 `.exe`、macOS universal `.zip`、Android `.apk`，以及可在 Xcode 開啟的 iOS 專案 `.zip`。Android 目前是未簽署 APK；iOS 專案需要在已接受 Xcode license、配置 Apple signing 後再封裝 IPA。
