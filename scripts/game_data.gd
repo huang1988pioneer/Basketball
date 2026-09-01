@@ -13,6 +13,12 @@ const FLOOR_Y := 584.0
 const THREE_DISTANCE := 535.0
 const SWEET_CHARGE := 0.72
 const COMBO_WINDOW := 4.0
+const BACKBOARD_X := 793.0
+const BACKBOARD_TOP := 202.0
+const BACKBOARD_BOTTOM := 332.0
+const RIM_PIPE_OFFSET := 38.0
+const SCORE_HALF_WIDTH := 24.0
+const SCORE_RESET_DELAY := 0.85
 
 const NAVY_950 := Color("050b1c")
 const NAVY_900 := Color("091633")

@@ -22,6 +22,23 @@
   const SKILL_COSTS = { [SKILL_FIRE]: 34, [SKILL_STEPBACK]: 28, [SKILL_DASH]: 22, [SKILL_METEOR]: 40 };
   const floor = { horizon: 292, baseline: 575, left: 35, right: 1245 };
   const hoop = { x: 1072, y: 345, rimY: 355 };
+  const PHYSICS = {
+    gravity: 980,
+    radius: 16,
+    airDrag: 0.02,
+    floorRest: 0.56,
+    floorFriction: 0.74,
+    rimRest: 0.40,
+    backboardRest: 0.50,
+    rimPipe: 6,
+    rimOffset: 44,
+    scoreHalf: 42,
+    backboardX: 1118,
+    backboardTop: 140,
+    backboardBottom: 325,
+    scoreResetDelay: 0.85,
+    trailMax: 12,
+  };
 
   // The Godot build and the browser build share the same generated art.  The
   // canvas still keeps its procedural fallback so the game remains playable
@@ -32,6 +49,10 @@
     opponent: new Image(),
     storyOpponent: new Image(),
     bossOpponent: new Image(),
+    playerPlay: new Image(),
+    opponentPlay: new Image(),
+    storyOpponentPlay: new Image(),
+    bossOpponentPlay: new Image(),
     support: new Image(),
     fireDunkVfx: new Image(),
     threePointerVfx: new Image(),
@@ -46,6 +67,10 @@
   generatedArt.opponent.src = "assets/generated-calico-cat.png";
   generatedArt.storyOpponent.src = "assets/generated-orange-cat-v2.png";
   generatedArt.bossOpponent.src = "assets/generated-boss-cat-v2.png";
+  generatedArt.playerPlay.src = "assets/generated-white-cat-play.png";
+  generatedArt.opponentPlay.src = "assets/generated-calico-cat-play.png";
+  generatedArt.storyOpponentPlay.src = "assets/generated-orange-cat-play.png";
+  generatedArt.bossOpponentPlay.src = "assets/generated-boss-cat-play.png";
   generatedArt.support.src = "assets/generated-support-cat-v2.png";
   generatedArt.fireDunkVfx.src = "assets/generated-vfx-fire-dunk-v2.png";
   generatedArt.threePointerVfx.src = "assets/generated-vfx-three-pointer-v2.png";
@@ -101,7 +126,10 @@
     possession: "player",
     player: { x: 355, y: 542, stamina: 86, facing: 1, bob: 0, dash: 0 },
     opponent: { x: 808, y: 535, stamina: 100, facing: -1, bob: 0, dash: 0 },
-    ball: { x: 383, y: 454, r: 16, inFlight: false, loose: false, spin: 0 },
+    ball: { x: 383, y: 454, r: 16, inFlight: false, loose: false, spin: 0, vx: 0, vy: 0, bounces: 0, scored: false, prevX: 383, prevY: 454, trail: [] },
+    visualTime: 0,
+    pendingResetIn: 0,
+    pendingPossession: null,
     charging: false,
     chargingShooter: null,
     charge: 0.18,
@@ -266,7 +294,10 @@
     state.opponent.y = 535;
     state.opponent.stamina = 100;
     state.opponent.dash = 0;
-    state.ball = { x: 383, y: 454, r: 16, inFlight: false, loose: false, spin: 0 };
+    state.ball = { x: 383, y: 454, r: 16, inFlight: false, loose: false, spin: 0, vx: 0, vy: 0, bounces: 0, scored: false, prevX: 383, prevY: 454, trail: [] };
+    state.visualTime = 0;
+    state.pendingResetIn = 0;
+    state.pendingPossession = null;
     state.charging = false;
     state.chargingShooter = null;
     state.charge = 0.18;
@@ -342,6 +373,60 @@
     updateUI(true);
   }
 
+  function shotFlightTime(distance, dunk = false) {
+    if (dunk) return clamp(0.58 + distance / 1800, 0.54, 0.82);
+    return clamp(0.70 + distance / 1400, 0.68, 1.28);
+  }
+  function ballisticVelocity(startX, startY, targetX, targetY, gravity, time) {
+    const t = Math.max(0.12, time);
+    return { x: (targetX - startX) / t, y: (targetY - startY) / t - 0.5 * gravity * t };
+  }
+  function shotPower(charge) {
+    return clamp(1 + (charge - 0.72) * 0.28, 0.58, 1.14);
+  }
+  function shotSpread(shotStat, nextBonus, modeBonus) {
+    return clamp(0.052 - (shotStat - 60) * 0.00042 - nextBonus * 0.09 + Math.max(0, -modeBonus) * 0.10, 0.008, 0.075);
+  }
+  function aiCharge(accuracy) {
+    const error = (1 - accuracy) * 0.30;
+    return clamp(0.72 + (Math.random() * 2 - 1) * error, 0.20, 1);
+  }
+  function applySpread(velocity, spread) {
+    if (spread <= 0) return velocity;
+    return {
+      x: velocity.x * (1 + (Math.random() * 2 - 1) * spread),
+      y: velocity.y * (1 + (Math.random() * 2 - 1) * spread * 0.65),
+    };
+  }
+  function holdDribble(actor, facingSign, time, isCharging) {
+    const b = state.ball;
+    const handX = actor.x - actor.facing * 52;
+    const handY = actor.y - 100;
+    b.inFlight = false;
+    b.loose = false;
+    b.scored = false;
+    b.vx = 0;
+    b.vy = 0;
+    b.x = handX;
+    if (isCharging) {
+      b.y = handY - 16;
+      b.spin += 0.08;
+      return;
+    }
+    const high = handY;
+    const low = Math.min(actor.y - b.r - 8, handY + 36);
+    const phase = (time * 2.7) % 1;
+    const u = phase < 0.5 ? phase * 2 : (1 - phase) * 2;
+    b.y = lerp(high, low, u * u);
+    b.spin += 0.22;
+  }
+  function idleBall() {
+    const b = state.ball;
+    if (b.inFlight || b.loose) return;
+    if (state.possession === "player") holdDribble(state.player, 1, state.visualTime, state.charging && state.chargingShooter === "player");
+    else if (state.possession === "opponent") holdDribble(state.opponent, -1, state.visualTime, state.charging && state.chargingShooter === "opponent");
+  }
+
   function update(dt) {
     if (!state.running) return;
     state.elapsed += dt;
@@ -355,12 +440,19 @@
     state.opponent.dash = Math.max(0, state.opponent.dash - dt);
     state.screenShake = Math.max(0, state.screenShake - dt);
     state.skillFlashTime = Math.max(0, state.skillFlashTime - dt);
+    if (state.pendingResetIn > 0) {
+      state.pendingResetIn = Math.max(0, state.pendingResetIn - dt);
+      if (state.pendingResetIn <= 0 && state.pendingPossession) {
+        const next = state.pendingPossession;
+        state.pendingPossession = null;
+        resetAfterScore(next);
+      }
+    }
 
     updatePlayer(dt);
     updateOpponent(dt);
     updateShotCharge(dt);
     updateBall(dt);
-    updateLooseBall(dt);
     updateEffects(dt);
     updateOpponentAI(dt);
     const totalDuration = Math.max(1, modeData[state.mode].duration);
@@ -400,10 +492,9 @@
     if (state.player.dash > 0) {
       state.player.x = clamp(state.player.x + state.player.facing * 180 * dt, 110, 1015);
     }
-    if (state.possession === "player" && !state.ball.inFlight) {
-      state.ball.x = state.player.x + state.player.facing * 28;
-      state.ball.y = state.player.y - 76 + Math.sin(state.elapsed * 11) * 7;
-      state.ball.loose = false;
+    tryGrabBall(state.player, "player");
+    if (state.possession === "player" && !state.ball.inFlight && !state.ball.loose) {
+      holdDribble(state.player, 1, state.visualTime, state.charging && state.chargingShooter === "player");
     }
   }
 
@@ -425,10 +516,9 @@
     o.y = clamp(o.y + dy / dist * speed * .38 * dt, 445, 569);
     if (Math.abs(dx) > 2) o.facing = dx > 0 ? 1 : -1;
     o.bob += dt * (dist > 30 ? 9 : 3);
-    if (state.possession === "opponent" && !state.ball.inFlight) {
-      state.ball.x = o.x + o.facing * -27;
-      state.ball.y = o.y - 75 + Math.sin(state.elapsed * 10 + 1) * 6;
-      state.ball.loose = false;
+    tryGrabBall(o, "opponent");
+    if (state.possession === "opponent" && !state.ball.inFlight && !state.ball.loose) {
+      holdDribble(o, -1, state.visualTime, state.charging && state.chargingShooter === "opponent");
     }
   }
 
@@ -447,11 +537,22 @@
     if (Math.abs(moveX) > .02) o.facing = moveX > 0 ? 1 : -1;
     o.bob += dt * (magnitude > .05 ? 10 : 3);
     if (o.dash > 0) o.x = clamp(o.x + o.facing * 180 * dt, 110, 1120);
-    if (state.possession === "opponent" && !state.ball.inFlight) {
-      state.ball.x = o.x + o.facing * -27;
-      state.ball.y = o.y - 75 + Math.sin(state.elapsed * 10 + 1) * 6;
-      state.ball.loose = false;
+    tryGrabBall(o, "opponent");
+    if (state.possession === "opponent" && !state.ball.inFlight && !state.ball.loose) {
+      holdDribble(o, -1, state.visualTime, state.charging && state.chargingShooter === "opponent");
     }
+  }
+
+  function tryGrabBall(actor, who) {
+    const b = state.ball;
+    if (!b.loose || b.inFlight || b.scored || state.pendingResetIn > 0) return;
+    const reach = (b.bounces || 0) >= 1 ? 82 : 54;
+    const myDist = Math.hypot(actor.x - b.x, actor.y - b.y);
+    if (myDist > reach) return;
+    const other = who === "player" ? state.opponent : state.player;
+    const otherDist = Math.hypot(other.x - b.x, other.y - b.y);
+    if (otherDist + 10 < myDist) return;
+    setPossession(who);
   }
 
   function updateShotCharge(dt) {
@@ -465,46 +566,156 @@
 
   function updateBall(dt) {
     const b = state.ball;
-    if (!b.inFlight) return;
+    if (state.possession === "player" && !b.inFlight && !b.loose) return;
+    if (state.possession === "opponent" && !b.inFlight && !b.loose) return;
+    if (!b.inFlight && !b.loose) return;
+    const event = stepBall(dt);
     const flight = b.flight;
-    flight.t += dt / flight.duration;
-    const t = clamp(flight.t, 0, 1);
-    b.x = lerp(flight.startX, flight.targetX, t);
-    const baseY = lerp(flight.startY, flight.targetY, t);
-    b.y = baseY - Math.sin(t * Math.PI) * flight.arc;
-    b.spin += dt * 16;
-    if (flight.t >= 1) {
-      b.inFlight = false;
-      if (flight.shooter === "player") resolvePlayerShot(flight);
-      else resolveOpponentShot(flight);
+    if (event === "scored" && flight && !flight.resolved) {
+      flight.resolved = true;
+      if (flight.shooter === "player") resolvePlayerShot(flight, true);
+      else resolveOpponentShot(flight, true);
+      state.pendingResetIn = PHYSICS.scoreResetDelay;
+      state.pendingPossession = flight.shooter === "player" ? "opponent" : "player";
+    } else if (event === "missed" && flight && !flight.resolved) {
+      flight.resolved = true;
+      if (flight.shooter === "player") resolvePlayerShot(flight, false);
+      else resolveOpponentShot(flight, false);
+    }
+    if (b.loose && !b.scored && (b.bounces || 0) >= 2) {
+      const pDist = Math.hypot(state.player.x - b.x, state.player.y - b.y);
+      const oDist = Math.hypot(state.opponent.x - b.x, state.opponent.y - b.y);
+      if (pDist < oDist && pDist < 120) setPossession("player");
+      else if (oDist < 120) setPossession("opponent");
     }
   }
 
-  function updateLooseBall(dt) {
+  function stepBall(dt) {
     const b = state.ball;
-    if (!b.loose || b.inFlight) return;
-    b.x += b.vx * dt;
-    b.vx *= Math.pow(.04, dt);
-    b.vy = (b.vy || 0) + 320 * dt;
-    b.y += b.vy * dt;
-    b.spin += dt * 14;
-    if (b.y > floor.baseline - 25) {
-      b.y = floor.baseline - 25;
-      b.vy = (b.vy || -110) * -.47;
-      b.vx *= .76;
-      b.bounces = (b.bounces || 0) + 1;
-      if (b.bounces > 2) {
-        const pDist = Math.hypot(state.player.x - b.x, state.player.y - b.y);
-        const oDist = Math.hypot(state.opponent.x - b.x, state.opponent.y - b.y);
-        if (pDist < oDist && pDist < 115) setPossession("player");
-        else if (oDist < 115) setPossession("opponent");
+    const speed = Math.hypot(b.vx || 0, b.vy || 0);
+    const substeps = Math.max(1, Math.min(8, Math.ceil(speed * dt / 4)));
+    const h = dt / substeps;
+    let event = "";
+    for (let i = 0; i < substeps; i += 1) {
+      const sub = integrateBall(h);
+      if (sub) {
+        event = sub;
+        if (sub === "scored" || sub === "missed") break;
       }
+    }
+    if (b.inFlight || b.loose) {
+      b.trail = b.trail || [];
+      b.trail.push({ x: b.x, y: b.y });
+      if (b.trail.length > PHYSICS.trailMax) b.trail.shift();
+    }
+    return event;
+  }
+
+  function integrateBall(dt) {
+    const b = state.ball;
+    b.prevX = b.x;
+    b.prevY = b.y;
+    b.vy = (b.vy || 0) + PHYSICS.gravity * dt;
+    const drag = clamp(1 - PHYSICS.airDrag * dt, 0.86, 1);
+    b.vx = (b.vx || 0) * drag;
+    b.x += b.vx * dt;
+    b.y += b.vy * dt;
+    b.spin += b.vx * dt * 0.018;
+    let event = checkScore();
+    collideRim();
+    collideBackboard();
+    collideWalls();
+    if (b.y + b.r >= floor.baseline) {
+      b.y = floor.baseline - b.r;
+      if (b.vy > 0) {
+        const incoming = b.vy;
+        b.vy *= -PHYSICS.floorRest;
+        b.vx *= PHYSICS.floorFriction;
+        b.bounces = (b.bounces || 0) + 1;
+        if (incoming < 55) {
+          b.vy = 0;
+          b.vx *= 0.82;
+        }
+        if (b.inFlight && !b.scored) {
+          b.inFlight = false;
+          b.loose = true;
+          return "missed";
+        }
+        if (b.scored) return "landed";
+      }
+    }
+    return event;
+  }
+
+  function checkScore() {
+    const b = state.ball;
+    if (b.scored || b.vy < 50) return "";
+    if (b.prevY >= hoop.rimY || b.y < hoop.rimY) return "";
+    const denom = Math.max(b.y - b.prevY, 0.0001);
+    const xCross = lerp(b.prevX, b.x, (hoop.rimY - b.prevY) / denom);
+    if (Math.abs(xCross - hoop.x) <= PHYSICS.scoreHalf) {
+      b.scored = true;
+      b.x = xCross;
+      b.y = hoop.rimY + 2;
+      b.vx *= 0.18;
+      b.vy = b.vy < 90 ? 90 : b.vy * 0.55;
+      return "scored";
+    }
+    return "";
+  }
+
+  function bounceCircle(cx, cy, pipeRadius, restitution) {
+    const b = state.ball;
+    const dx = b.x - cx;
+    const dy = b.y - cy;
+    const dist = Math.hypot(dx, dy);
+    const minDist = b.r + pipeRadius;
+    if (dist >= minDist || dist <= 0.0001) return;
+    const nx = dx / dist;
+    const ny = dy / dist;
+    b.x = cx + nx * minDist;
+    b.y = cy + ny * minDist;
+    const vn = b.vx * nx + b.vy * ny;
+    if (vn < 0) {
+      b.vx -= (1 + restitution) * vn * nx;
+      b.vy -= (1 + restitution) * vn * ny;
+    }
+  }
+
+  function collideRim() {
+    const b = state.ball;
+    if (b.scored) return;
+    if (Math.abs(b.x - hoop.x) <= PHYSICS.scoreHalf && b.y <= hoop.rimY + 10) return;
+    bounceCircle(hoop.x - PHYSICS.rimOffset, hoop.rimY, PHYSICS.rimPipe, PHYSICS.rimRest);
+    bounceCircle(hoop.x + PHYSICS.rimOffset, hoop.rimY, PHYSICS.rimPipe, PHYSICS.rimRest);
+  }
+
+  function collideBackboard() {
+    const b = state.ball;
+    if (b.x + b.r < PHYSICS.backboardX || b.y < PHYSICS.backboardTop || b.y > PHYSICS.backboardBottom) return;
+    if (b.vx > 0) {
+      b.x = PHYSICS.backboardX - b.r;
+      b.vx *= -PHYSICS.backboardRest;
+      b.spin += 1.6;
+    }
+  }
+
+  function collideWalls() {
+    const b = state.ball;
+    const left = floor.left + 10 + b.r;
+    const right = floor.right - 10 - b.r;
+    if (b.x < left) {
+      b.x = left;
+      b.vx = Math.abs(b.vx) * 0.35;
+    } else if (b.x > right) {
+      b.x = right;
+      b.vx = -Math.abs(b.vx) * 0.35;
     }
   }
 
   function updateOpponentAI(dt) {
     if (state.mode === "duo") return;
-    if (state.ball.inFlight) return;
+    if (state.ball.inFlight || state.ball.loose) return;
     if (state.possession === "player") {
       if (state.charging && state.opponentDefenseCooldown <= 0) {
         const pressureDistance = distance(state.player, state.opponent);
@@ -550,23 +761,21 @@
   function setPossession(who) {
     state.possession = who;
     state.ball.loose = false;
+    state.ball.inFlight = false;
+    state.ball.scored = false;
     state.ball.bounces = 0;
     state.ball.vx = 0;
     state.ball.vy = 0;
-    if (who === "player") {
-      state.ball.x = state.player.x + state.player.facing * 28;
-      state.ball.y = state.player.y - 77;
-    } else if (who === "opponent") {
-      state.ball.x = state.opponent.x + state.opponent.facing * -27;
-      state.ball.y = state.opponent.y - 77;
-    }
+    state.ball.trail = [];
+    if (who === "player") holdDribble(state.player, 1, state.visualTime, false);
+    else if (who === "opponent") holdDribble(state.opponent, -1, state.visualTime, false);
     updateUI(true);
   }
 
   function beginShot() {
     if (!state.running) { showToast("先按「開始比賽」再上場！", 1300); return; }
     if (state.possession !== "player") { showToast("先把球搶回來！", 1100); return; }
-    if (state.ball.inFlight || state.shotCooldown > 0 || state.charging) return;
+    if (state.ball.inFlight || state.ball.loose || state.shotCooldown > 0 || state.charging || state.pendingResetIn > 0) return;
     state.charging = true;
     state.chargingShooter = "player";
     state.charge = .16;
@@ -581,7 +790,7 @@
     if (state.mode !== "duo") return;
     if (!state.running) { showToast("先按「開始比賽」再上場！", 1300); return; }
     if (state.possession !== "opponent") { showToast("P2 先把球搶回來！", 1100); return; }
-    if (state.ball.inFlight || state.opponentShotCooldown > 0 || state.charging) return;
+    if (state.ball.inFlight || state.ball.loose || state.opponentShotCooldown > 0 || state.charging || state.pendingResetIn > 0) return;
     state.charging = true;
     state.chargingShooter = "opponent";
     state.charge = .16;
@@ -601,52 +810,69 @@
     ui.shotButton.classList.remove("p2-charge");
     ui.shotHint.textContent = "按住蓄力";
     if (shooter === "opponent") {
-      if (state.possession !== "opponent" || state.ball.inFlight) return;
+      if (state.possession !== "opponent" || state.ball.inFlight || state.ball.loose) return;
       state.opponentShotCooldown = .55;
       launchOpponentShot(forceCharge ?? state.charge);
       return;
     }
-    if (state.possession !== "player" || state.ball.inFlight) return;
+    if (state.possession !== "player" || state.ball.inFlight || state.ball.loose) return;
     const charge = forceCharge ?? state.charge;
     const player = state.player;
     const distanceToHoop = Math.abs(hoop.x - player.x);
-    const duration = clamp(.72 + distanceToHoop / 1600, .76, 1.25);
-    state.ball.inFlight = true;
-    state.ball.loose = false;
-    state.ball.flight = { shooter: "player", startX: player.x + player.facing * 24, startY: player.y - 80, targetX: hoop.x, targetY: hoop.rimY - 12, arc: 112 + charge * 45, duration, t: 0, charge, distance: distanceToHoop };
+    const data = characterData[state.character] || characterData.white;
+    const spread = shotSpread(data.stats[1], state.nextShotBonus, modeData[state.mode].shotBonus || 0);
+    launchShot("player", player.x - player.facing * 52, player.y - 100, charge, distanceToHoop, spread);
     state.shotShooter = "player";
-    state.possession = null;
     state.shotCooldown = .45;
     addFloater(isSweet(charge) ? "甜蜜點！" : "出手！", player.x, player.y - 129, isSweet(charge) ? "#9dffc9" : "#d9e8ff");
     playTone(isSweet(charge) ? 590 : 410, .09, "triangle", .028);
   }
 
   function shootForOpponent() {
-    launchOpponentShot(.72);
+    if (state.mode === "duo") launchOpponentShot(0.72);
+    else launchOpponentShot(aiCharge(modeData[state.mode].opponentAccuracy));
+  }
+
+  function launchShot(shooter, startX, startY, charge, distanceToHoop, spread, dunk = false) {
+    const time = shotFlightTime(distanceToHoop, dunk);
+    let velocity = ballisticVelocity(startX, startY, hoop.x, hoop.rimY - 6, PHYSICS.gravity, time);
+    const power = shotPower(charge);
+    velocity = { x: velocity.x * power, y: velocity.y * power };
+    velocity = applySpread(velocity, spread);
+    const b = state.ball;
+    b.x = startX;
+    b.y = startY;
+    b.prevX = startX;
+    b.prevY = startY;
+    b.vx = velocity.x;
+    b.vy = velocity.y;
+    b.inFlight = true;
+    b.loose = false;
+    b.scored = false;
+    b.bounces = 0;
+    b.trail = [{ x: startX, y: startY }];
+    b.flight = { shooter, startX, startY, targetX: hoop.x, targetY: hoop.rimY, charge, distance: distanceToHoop, resolved: false };
+    state.possession = null;
+    state.nextShotBonus = 0;
   }
 
   function launchOpponentShot(charge = .72) {
     const o = state.opponent;
     const distanceToHoop = Math.abs(hoop.x - o.x);
-    const duration = clamp(.8 + distanceToHoop / 1700, .8, 1.25);
-    state.ball.inFlight = true;
-    state.ball.loose = false;
-    state.ball.flight = { shooter: "opponent", startX: o.x - 24, startY: o.y - 78, targetX: hoop.x, targetY: hoop.rimY - 12, arc: 112 + charge * 38, duration, t: 0, charge, distance: distanceToHoop };
-    state.possession = null;
+    let spread = 0.012;
+    if (state.mode === "duo") {
+      const opponentData = characterData.calico || characterData.white;
+      spread = shotSpread(opponentData.stats[1], 0, 0);
+    } else {
+      spread = clamp(0.07 - modeData[state.mode].opponentAccuracy * 0.06, 0.012, 0.055);
+    }
+    launchShot("opponent", o.x - o.facing * 52, o.y - 100, charge, distanceToHoop, spread);
     const opponent = opponentPresentation[state.mode] || opponentPresentation.quick;
     addFloater(`${opponent.name}出手`, o.x, o.y - 126, opponent.color);
     playTone(state.mode === "duo" ? 410 : 285, .08, "sine", .022);
   }
 
-  function resolvePlayerShot(flight) {
-    const sweet = 1 - Math.min(1, Math.abs(flight.charge - .72) / .72);
-    const distanceBonus = clamp(1 - Math.abs(flight.distance - 540) / 800, .35, 1);
-    const data = characterData[state.character] || characterData.white;
-    const shotBonus = (data.stats[1] - 76) * .0035;
-    const threeBonus = flight.distance > 540 ? (data.stats[2] - 68) * .0025 : 0;
-    const chance = clamp(.18 + sweet * .68 + distanceBonus * .08 + shotBonus + threeBonus + state.nextShotBonus + (modeData[state.mode].shotBonus || 0), .08, .96);
-    const made = sweet > .84 || Math.random() < chance;
-    state.nextShotBonus = 0;
+  function resolvePlayerShot(flight, made) {
     if (made) {
       const points = flight.distance > 540 ? 3 : 2;
       state.combo += 1;
@@ -661,24 +887,16 @@
       if (state.combo >= 2) addFloater(`連續命中 x${state.combo}`, hoop.x - 28, hoop.rimY - 84, "#d6b2ff");
       showToast(points === 3 ? "🌟 三分命中！" : "🏀 兩分拿下！", 1800);
       playTone(points === 3 ? 780 : 660, .17, "triangle", .042);
-      resetAfterScore("opponent");
     } else {
       breakCombo();
       addFloater("籃框彈出", hoop.x - 30, hoop.rimY - 40, "#ffb1b1");
       showToast("差一點！調整蓄力再試一次。", 1400);
       playTone(190, .1, "sawtooth", .02);
-      makeLooseBall(hoop.x - 12, hoop.rimY + 12, -145, -205);
     }
   }
 
-  function resolveOpponentShot(flight) {
-    const opponentData = characterData.calico || characterData.white;
-    const sweet = 1 - Math.min(1, Math.abs(flight.charge - .72) / .72);
-    const distanceBonus = clamp(1 - Math.abs(flight.distance - 540) / 800, .35, 1);
-    const humanChance = clamp(.18 + sweet * .68 + distanceBonus * .08 + (opponentData.stats[1] - 76) * .0035 + (flight.distance > 540 ? (opponentData.stats[2] - 68) * .0025 : 0), .08, .96);
-    const chance = state.mode === "duo" ? humanChance : modeData[state.mode].opponentAccuracy;
+  function resolveOpponentShot(flight, made) {
     const opponent = opponentPresentation[state.mode] || opponentPresentation.quick;
-    const made = Math.random() < chance;
     if (made) {
       const points = flight.distance > 540 ? 3 : 2;
       breakCombo();
@@ -689,9 +907,7 @@
       addFloater(`${opponent.name} +${points}`, hoop.x - 45, hoop.rimY - 48, opponent.color);
       showToast(`${opponent.name}命中 ${points} 分`, 1500);
       playTone(330, .14, "sine", .03);
-      resetAfterScore("player");
     } else {
-      makeLooseBall(hoop.x - 12, hoop.rimY + 12, -120, -180);
       showToast("對手投丟了，快搶籃板！", 1200);
     }
   }
@@ -710,6 +926,8 @@
   function resetAfterScore(nextPossession) {
     state.ball.inFlight = false;
     state.ball.loose = false;
+    state.ball.scored = false;
+    state.pendingResetIn = 0;
     state.player.x = 355;
     state.player.y = 542;
     state.opponent.x = 808;
@@ -802,10 +1020,8 @@
       p.dash = .6;
       p.x = clamp(hoop.x - 170, 130, 1015);
       burst(p.x, p.y - 70, "#ff9e4c", 22);
-      if (state.possession === "player") {
-        state.ball.inFlight = true;
-        state.possession = null;
-        state.ball.flight = { shooter: "player", startX: p.x + 25, startY: p.y - 78, targetX: hoop.x, targetY: hoop.rimY - 13, arc: 100, duration: .68, t: 0, charge: .74, distance: Math.abs(hoop.x - p.x), special: true };
+      if (state.possession === "player" && !state.ball.inFlight && !state.ball.loose) {
+        launchShot("player", p.x - p.facing * 52, p.y - 100, 0.72, Math.abs(hoop.x - p.x), 0.008, true);
         state.shotCooldown = .4;
       }
       showToast("🔥 火焰灌籃！", 1500);
@@ -826,7 +1042,7 @@
       showToast("🌀 幻影變向！防守失去目標", 1500);
       playTone(530, .16, "sine", .03);
     } else {
-      if (state.possession === "player" && !state.ball.inFlight) {
+      if (state.possession === "player" && !state.ball.inFlight && !state.ball.loose) {
         state.charging = true;
         state.chargingShooter = "player";
         releaseShot(.72);
@@ -1116,15 +1332,29 @@
   }
 
   function drawAimGuide() {
-    if (!state.charging || state.possession !== "player") return;
-    const startX = state.player.x + state.player.facing * 28;
-    const startY = state.player.y - 80;
+    if (!state.charging) return;
+    const actor = state.chargingShooter === "opponent" ? state.opponent : state.player;
+    if (state.possession !== state.chargingShooter) return;
+    const startX = actor.x - actor.facing * 52;
+    const startY = actor.y - 100;
+    const time = shotFlightTime(Math.abs(hoop.x - actor.x));
+    let velocity = ballisticVelocity(startX, startY, hoop.x, hoop.rimY - 6, PHYSICS.gravity, time);
+    const power = shotPower(state.charge);
+    velocity = { x: velocity.x * power, y: velocity.y * power };
     ctx.save();
-    ctx.setLineDash([5, 10]); ctx.lineWidth = 2; ctx.strokeStyle = "rgba(191, 225, 255, .55)";
-    ctx.beginPath(); ctx.moveTo(startX, startY); ctx.quadraticCurveTo((startX + hoop.x) / 2, startY - 180 - state.charge * 40, hoop.x, hoop.rimY - 12); ctx.stroke(); ctx.setLineDash([]);
+    ctx.setLineDash([5, 10]); ctx.lineWidth = 2; ctx.strokeStyle = "rgba(191, 225, 255, .62)";
+    ctx.beginPath(); ctx.moveTo(startX, startY);
+    for (let i = 1; i <= 22; i += 1) {
+      const t = i * 0.055;
+      const px = startX + velocity.x * t;
+      const py = startY + velocity.y * t + 0.5 * PHYSICS.gravity * t * t;
+      if (py > floor.baseline - 8) break;
+      ctx.lineTo(px, py);
+    }
+    ctx.stroke(); ctx.setLineDash([]);
     const aim = ctx.createRadialGradient(hoop.x, hoop.rimY, 4, hoop.x, hoop.rimY, 37); aim.addColorStop(0, `rgba(103, 237, 164, ${.13 + state.charge * .2})`); aim.addColorStop(1, "rgba(103, 237, 164, 0)"); ctx.fillStyle = aim; ctx.beginPath(); ctx.arc(hoop.x, hoop.rimY, 38, 0, TAU); ctx.fill();
     // in-canvas power meter
-    const meterX = state.player.x - 51; const meterY = state.player.y - 171; const meterW = 102; const meterH = 9;
+    const meterX = actor.x - 51; const meterY = actor.y - 171; const meterW = 102; const meterH = 9;
     roundRect(ctx, meterX, meterY, meterW, meterH, 5); ctx.fillStyle = "rgba(6, 15, 34, .82)"; ctx.fill();
     const fill = ctx.createLinearGradient(meterX, 0, meterX + meterW, 0); fill.addColorStop(0, "#4abfd9"); fill.addColorStop(.62, "#72e49d"); fill.addColorStop(.82, "#ffd467"); fill.addColorStop(1, "#ed6d67"); roundRect(ctx, meterX + 2, meterY + 2, (meterW - 4) * state.charge, meterH - 4, 3); ctx.fillStyle = fill; ctx.fill();
     ctx.fillStyle = "rgba(246, 255, 242, .8)"; ctx.font = "800 10px system-ui"; ctx.textAlign = "center"; ctx.fillText("POWER", meterX + meterW / 2, meterY - 7); ctx.textAlign = "left";
@@ -1154,8 +1384,9 @@
     ctx.save(); ctx.translate(x, groundY + bounce); ctx.scale(facing, 1);
     // shadow
     ctx.globalAlpha = .35; ctx.fillStyle = "#111021"; ctx.beginPath(); ctx.ellipse(0, 5, 48, 10, 0, 0, TAU); ctx.fill(); ctx.globalAlpha = 1;
-    const playerArt = state.character === "calico" ? generatedArt.opponent : state.character === "orange" ? generatedArt.storyOpponent : state.character === "boss" ? generatedArt.bossOpponent : generatedArt.player;
-    const generatedCat = isBlue ? playerArt : (state.mode === "story" ? generatedArt.storyOpponent : state.mode === "boss" ? generatedArt.bossOpponent : generatedArt.opponent);
+    const playerArt = state.character === "calico" ? generatedArt.opponentPlay : state.character === "orange" ? generatedArt.storyOpponentPlay : state.character === "boss" ? generatedArt.bossOpponentPlay : generatedArt.playerPlay;
+    const opponentArt = state.mode === "story" ? generatedArt.storyOpponentPlay : state.mode === "boss" ? generatedArt.bossOpponentPlay : generatedArt.opponentPlay;
+    const generatedCat = isBlue ? playerArt : opponentArt;
     if (generatedCat.complete && generatedCat.naturalWidth > 0) {
       ctx.drawImage(generatedCat, -112, -240, 224, 240);
       if (active) {
@@ -1199,9 +1430,22 @@
   function drawBall() {
     const b = state.ball;
     if (!b) return;
-    if (generatedArt.player.complete && generatedArt.player.naturalWidth > 0 && !b.inFlight && !b.loose) return;
     ctx.save();
-    const glow = ctx.createRadialGradient(b.x - 3, b.y - 3, 1, b.x, b.y, b.r * 2.7); glow.addColorStop(0, "rgba(255, 189, 77, .25)"); glow.addColorStop(1, "rgba(255, 152, 28, 0)"); ctx.fillStyle = glow; ctx.beginPath(); ctx.arc(b.x, b.y, b.r * 2.7, 0, TAU); ctx.fill();
+    const height = clamp((floor.baseline - b.y) / 280, 0, 1);
+    const shadowScale = clamp(1 - height * 0.62, 0.28, 1);
+    ctx.globalAlpha = 0.32 * shadowScale;
+    ctx.fillStyle = "#111021";
+    ctx.beginPath(); ctx.ellipse(b.x, floor.baseline - 6, 17 * shadowScale, 6 * shadowScale, 0, 0, TAU); ctx.fill();
+    ctx.globalAlpha = 1;
+    if ((b.inFlight || b.loose) && Array.isArray(b.trail)) {
+      b.trail.forEach((point, i) => {
+        ctx.globalAlpha = ((i + 1) / Math.max(b.trail.length, 1)) * 0.28;
+        ctx.fillStyle = "#ff9e38";
+        ctx.beginPath(); ctx.arc(point.x, point.y, 5 + i * 0.4, 0, TAU); ctx.fill();
+      });
+      ctx.globalAlpha = 1;
+    }
+    const glow = ctx.createRadialGradient(b.x - 3, b.y - 3, 1, b.x, b.y, b.r * 2.7); glow.addColorStop(0, b.inFlight ? "rgba(255, 189, 77, .35)" : "rgba(255, 189, 77, .25)"); glow.addColorStop(1, "rgba(255, 152, 28, 0)"); ctx.fillStyle = glow; ctx.beginPath(); ctx.arc(b.x, b.y, b.r * 2.7, 0, TAU); ctx.fill();
     const ballGradient = ctx.createRadialGradient(b.x - 5, b.y - 6, 2, b.x, b.y, b.r); ballGradient.addColorStop(0, "#ffc66a"); ballGradient.addColorStop(.45, "#ed7d27"); ballGradient.addColorStop(1, "#b43e1d"); ctx.fillStyle = ballGradient; ctx.beginPath(); ctx.arc(b.x, b.y, b.r, 0, TAU); ctx.fill();
     ctx.save(); ctx.translate(b.x, b.y); ctx.rotate(b.spin || 0); ctx.strokeStyle = "rgba(102, 36, 21, .7)"; ctx.lineWidth = 2; ctx.beginPath(); ctx.arc(0, 0, b.r - 1, -.9, .9); ctx.stroke(); ctx.beginPath(); ctx.arc(0, 0, b.r - 1, Math.PI - .9, Math.PI + .9); ctx.stroke(); ctx.beginPath(); ctx.moveTo(-b.r + 2, -2); ctx.quadraticCurveTo(0, 7, b.r - 2, 2); ctx.stroke(); ctx.restore();
     ctx.restore();
@@ -1320,9 +1564,10 @@
   function loop(time) {
     const dt = state.lastTime ? Math.min(.04, (time - state.lastTime) / 1000) : 0;
     state.lastTime = time;
-    const idle = !state.running && !state.gameOver && state.skillFlashTime <= 0 && state.particles.length === 0 && state.floaters.length === 0 && state.rings.length === 0;
-    update(dt);
-    if (!idle || state.charging) draw();
+    state.visualTime += dt;
+    if (state.running) update(dt);
+    else idleBall();
+    draw();
     requestAnimationFrame(loop);
   }
 
@@ -1331,4 +1576,13 @@
 
   resetGame(false);
   requestAnimationFrame(loop);
+  if (new URLSearchParams(location.search).get("demo") === "physics") {
+    setTimeout(() => {
+      if (!state.running) startOrPause();
+      setTimeout(() => {
+        beginShot();
+        releaseShot(0.72);
+      }, 350);
+    }, 250);
+  }
 })();

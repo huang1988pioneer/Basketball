@@ -46,6 +46,10 @@ var player_texture: Texture2D = preload("res://assets/generated-white-cat.png")
 var opponent_texture: Texture2D = preload("res://assets/generated-calico-cat.png")
 var story_opponent_texture: Texture2D = preload("res://assets/generated-orange-cat-v2.png")
 var boss_opponent_texture: Texture2D = preload("res://assets/generated-boss-cat-v2.png")
+var player_play_texture: Texture2D = preload("res://assets/generated-white-cat-play.png")
+var opponent_play_texture: Texture2D = preload("res://assets/generated-calico-cat-play.png")
+var story_opponent_play_texture: Texture2D = preload("res://assets/generated-orange-cat-play.png")
+var boss_opponent_play_texture: Texture2D = preload("res://assets/generated-boss-cat-play.png")
 var title_emblem_texture: Texture2D = preload("res://assets/generated-app-icon-v2.png")
 var ui_frame_texture: Texture2D = preload("res://assets/generated-ui-frame-v2.png")
 var feature_texture: Texture2D = preload("res://assets/generated-feature-icons-v2.png")
@@ -111,6 +115,9 @@ var particles: Array[Dictionary] = []
 var floaters: Array[Dictionary] = []
 var rings: Array[Dictionary] = []
 var _panel_styles: Dictionary = {}
+var visual_time := 0.0
+var pending_reset_in := 0.0
+var pending_possession := ""
 
 
 func _ready() -> void:
@@ -125,11 +132,13 @@ func _ready() -> void:
 
 func _process(delta: float) -> void:
 	var dt: float = minf(delta, 0.05)
+	visual_time += dt
 	var needs_draw := running or help_visible or game_over
 	if running:
 		update_game(dt)
 		needs_draw = true
 	else:
+		_idle_ball(dt)
 		if message_timer > 0.0:
 			message_timer = maxf(0.0, message_timer - dt)
 			needs_draw = true
@@ -137,6 +146,7 @@ func _process(delta: float) -> void:
 			skill_flash_timer = maxf(0.0, skill_flash_timer - dt)
 			update_effects(dt)
 			needs_draw = true
+		needs_draw = true
 	if needs_draw:
 		queue_redraw()
 
@@ -294,11 +304,16 @@ func update_game(dt: float) -> void:
 	skill_flash_timer = maxf(0.0, skill_flash_timer - dt)
 	message_timer = maxf(0.0, message_timer - dt)
 
+	if pending_reset_in > 0.0:
+		pending_reset_in = maxf(0.0, pending_reset_in - dt)
+		if pending_reset_in <= 0.0 and pending_possession != "":
+			var next_who := pending_possession
+			pending_possession = ""
+			reset_after_score(next_who)
 	update_player(dt)
 	update_opponent(dt)
 	update_charge(dt)
 	update_ball(dt)
-	update_loose_ball(dt)
 	update_ai(dt)
 	update_effects(dt)
 	var total_duration: float = maxf(1.0, float(current_mode()["duration"]))
@@ -339,10 +354,9 @@ func update_player(dt: float) -> void:
 	if player.dash > 0.0:
 		player.x = clampf(player.x + player.facing * 165.0 * dt, 104.0, 702.0)
 
-	if possession == "player" and not ball.in_flight:
-		ball.x = player.x + player.facing * 26.0
-		ball.y = player.y - 75.0 + sin(elapsed * 10.0) * 6.0
-		ball.loose = false
+	_try_grab_ball(player, "player")
+	if possession == "player" and not ball.in_flight and not ball.loose:
+		_dribble_with(player)
 
 
 func update_opponent(dt: float) -> void:
@@ -387,10 +401,37 @@ func update_human_opponent(dt: float) -> void:
 
 
 func _attach_ball_to_opponent() -> void:
-	if possession == "opponent" and not ball.in_flight:
-		ball.x = opponent.x - opponent.facing * 25.0
-		ball.y = opponent.y - 75.0 + sin(elapsed * 9.0 + 1.0) * 6.0
-		ball.loose = false
+	_try_grab_ball(opponent, "opponent")
+	if possession == "opponent" and not ball.in_flight and not ball.loose:
+		_dribble_with(opponent)
+
+
+func _dribble_with(actor: CourtActor) -> void:
+	var hand := Vector2(actor.x - actor.facing * 52.0, actor.y - 100.0)
+	var is_this_charging := charging and ((charging_shooter == "player" and actor == player) or (charging_shooter == "opponent" and actor == opponent))
+	ball.hold_dribble(hand, actor.y, visual_time, is_this_charging)
+
+
+func _idle_ball(_dt: float) -> void:
+	if ball.in_flight or ball.loose:
+		return
+	if possession == "player":
+		_dribble_with(player)
+	elif possession == "opponent":
+		_dribble_with(opponent)
+
+
+func _try_grab_ball(actor: CourtActor, who: String) -> void:
+	if not ball.loose or ball.in_flight or ball.scored or pending_reset_in > 0.0:
+		return
+	var reach := 82.0 if ball.bounces >= 1 else 54.0
+	var my_dist := actor.pos().distance_to(ball.pos())
+	if my_dist > reach:
+		return
+	var other: CourtActor = opponent if who == "player" else player
+	if other.pos().distance_to(ball.pos()) + 10.0 < my_dist:
+		return
+	set_possession(who)
 
 
 func update_charge(dt: float) -> void:
@@ -406,45 +447,38 @@ func update_charge(dt: float) -> void:
 
 
 func update_ball(dt: float) -> void:
-	if not ball.in_flight:
+	if possession == "player" and not ball.in_flight and not ball.loose:
 		return
-	var t: float = minf(1.0, flight.t + dt / flight.duration)
-	flight.t = t
-	ball.x = lerpf(flight.start.x, flight.target.x, t)
-	ball.y = lerpf(flight.start.y, flight.target.y, t) - sin(t * PI) * flight.arc
-	ball.spin += dt * 15.0
-	if flight.t >= 1.0:
-		ball.in_flight = false
+	if possession == "opponent" and not ball.in_flight and not ball.loose:
+		return
+	if not ball.in_flight and not ball.loose:
+		return
+	var event := ball.step(dt, WORLD_RECT, HOOP, RIM_Y, FLOOR_Y, GameData.BACKBOARD_X)
+	if event == "scored" and not flight.resolved:
+		flight.resolved = true
 		if flight.shooter == "player":
-			resolve_player_shot()
+			resolve_player_shot(true)
 		else:
-			resolve_opponent_shot()
-
-
-func update_loose_ball(dt: float) -> void:
-	if not ball.loose or ball.in_flight:
-		return
-	ball.x += ball.vx * dt
-	ball.vy += 360.0 * dt
-	ball.y += ball.vy * dt
-	ball.vx *= pow(0.04, dt)
-	ball.spin += dt * 13.0
-	if ball.y >= FLOOR_Y - 22.0:
-		ball.y = FLOOR_Y - 22.0
-		ball.vy *= -0.47
-		ball.vx *= 0.76
-		ball.bounces += 1
-		if ball.bounces >= 2:
-			var pd := player.pos().distance_to(ball.pos())
-			var od := opponent.pos().distance_to(ball.pos())
-			if pd < od and pd < 120.0:
-				set_possession("player")
-			elif od < 120.0:
-				set_possession("opponent")
+			resolve_opponent_shot(true)
+		pending_reset_in = GameData.SCORE_RESET_DELAY
+		pending_possession = "opponent" if flight.shooter == "player" else "player"
+	elif event == "missed" and not flight.resolved:
+		flight.resolved = true
+		if flight.shooter == "player":
+			resolve_player_shot(false)
+		else:
+			resolve_opponent_shot(false)
+	if ball.loose and not ball.scored and ball.bounces >= 2:
+		var pd := player.pos().distance_to(ball.pos())
+		var od := opponent.pos().distance_to(ball.pos())
+		if pd < od and pd < 120.0:
+			set_possession("player")
+		elif od < 120.0:
+			set_possession("opponent")
 
 
 func update_ai(dt: float) -> void:
-	if mode == "duo" or ball.in_flight:
+	if mode == "duo" or ball.in_flight or ball.loose:
 		return
 	if possession == "player":
 		if charging and opponent_defense_cooldown <= 0.0:
@@ -506,7 +540,7 @@ func begin_shot() -> void:
 	if possession != "player":
 		show_message("先把球搶回來！", 1.1)
 		return
-	if ball.in_flight or shot_cooldown > 0.0 or charging:
+	if ball.in_flight or ball.loose or shot_cooldown > 0.0 or charging or pending_reset_in > 0.0:
 		return
 	charging = true
 	charging_shooter = "player"
@@ -524,7 +558,7 @@ func begin_opponent_shot() -> void:
 	if possession != "opponent":
 		show_message("P2 先把球搶回來！", 1.1)
 		return
-	if ball.in_flight or opponent_shot_cooldown > 0.0 or charging:
+	if ball.in_flight or ball.loose or opponent_shot_cooldown > 0.0 or charging or pending_reset_in > 0.0:
 		return
 	charging = true
 	charging_shooter = "opponent"
@@ -540,52 +574,63 @@ func release_shot(force_charge: float = -1.0) -> void:
 	charging = false
 	charging_shooter = ""
 	if shooter == "opponent":
-		if possession != "opponent" or ball.in_flight:
+		if possession != "opponent" or ball.in_flight or ball.loose:
 			return
 		opponent_shot_cooldown = 0.55
 		shoot_for_opponent(force_charge if force_charge >= 0.0 else charge)
 		return
-	if possession != "player" or ball.in_flight:
+	if possession != "player" or ball.in_flight or ball.loose:
 		return
 	var final_charge: float = charge if force_charge < 0.0 else force_charge
 	var distance_to_hoop: float = absf(HOOP.x - player.x)
-	var duration: float = clampf(0.70 + distance_to_hoop / 1450.0, 0.72, 1.20)
+	var spread := GameRules.shot_spread(player_stat(1), next_shot_bonus, float(current_mode()["shot_bonus"]))
 	_launch_shot(
 		"player",
-		Vector2(player.x + player.facing * 25.0, player.y - 80.0),
-		108.0 + final_charge * 47.0,
-		duration,
+		Vector2(player.x - player.facing * 52.0, player.y - 100.0),
 		final_charge,
-		distance_to_hoop
+		distance_to_hoop,
+		spread
 	)
 	shot_cooldown = 0.45
 	add_floater("甜蜜點！" if GameRules.is_sweet(final_charge) else "出手！", player.x, player.y - 130.0, GREEN if GameRules.is_sweet(final_charge) else BLUE_LIGHT)
 
 
-func shoot_for_opponent(charge_value: float = 0.72) -> void:
+func shoot_for_opponent(charge_value: float = -1.0) -> void:
 	var distance_to_hoop: float = absf(HOOP.x - opponent.x)
+	var shot_charge: float = charge_value
+	var spread := 0.012
+	if shot_charge < 0.0:
+		if mode == "duo":
+			shot_charge = 0.72
+		else:
+			shot_charge = GameRules.ai_charge(float(current_mode()["opponent_accuracy"]))
+			spread = clampf(0.07 - float(current_mode()["opponent_accuracy"]) * 0.06, 0.012, 0.055)
+	elif mode == "duo":
+		var calico: Dictionary = GameData.character_info("calico")
+		spread = GameRules.shot_spread(float(calico["stats"][1]), 0.0, 0.0)
 	_launch_shot(
 		"opponent",
-		Vector2(opponent.x - 25.0, opponent.y - 78.0),
-		112.0 + charge_value * 38.0,
-		clampf(0.78 + distance_to_hoop / 1600.0, 0.8, 1.22),
-		charge_value,
-		distance_to_hoop
+		Vector2(opponent.x - opponent.facing * 52.0, opponent.y - 100.0),
+		shot_charge,
+		distance_to_hoop,
+		spread
 	)
 	add_floater("%s出手" % opponent_display_name(), opponent.x, opponent.y - 124.0, opponent_color().lightened(0.22))
 
 
-func _launch_shot(shooter: String, start: Vector2, arc: float, duration: float, shot_charge: float, distance_to_hoop: float) -> void:
-	flight.configure(shooter, start, Vector2(HOOP.x, RIM_Y - 12.0), arc, duration, shot_charge, distance_to_hoop)
-	ball.in_flight = true
-	ball.loose = false
+func _launch_shot(shooter: String, start: Vector2, shot_charge: float, distance_to_hoop: float, spread: float, dunk: bool = false) -> void:
+	var target := Vector2(HOOP.x, RIM_Y - 6.0)
+	var flight_time := GameRules.shot_flight_time(distance_to_hoop, dunk)
+	var velocity := GameRules.ballistic_velocity(start, target, GameBall.GRAVITY, flight_time)
+	velocity *= GameRules.shot_power(shot_charge)
+	velocity = GameRules.apply_spread(velocity, spread)
+	flight.configure(shooter, start, target, shot_charge, distance_to_hoop)
+	ball.launch(start, velocity)
 	possession = "none"
-
-
-func resolve_player_shot() -> void:
-	var chance := GameRules.shot_chance(flight.charge, flight.distance, player_stat(1), player_stat(2), next_shot_bonus, float(current_mode()["shot_bonus"]))
-	var made: bool = GameRules.is_automatic_make(flight.charge) or randf() < chance
 	next_shot_bonus = 0.0
+
+
+func resolve_player_shot(made: bool) -> void:
 	if made:
 		var points := GameRules.points_for(flight.distance)
 		combo += 1
@@ -599,19 +644,13 @@ func resolve_player_shot() -> void:
 		if combo >= 2:
 			add_floater("連續命中 x%d" % combo, HOOP.x - 22.0, RIM_Y - 84.0, PURPLE)
 		show_message("🌟 三分命中！" if points == 3 else "🏀 兩分拿下！", 1.8)
-		reset_after_score("opponent")
 	else:
 		break_combo()
 		add_floater("籃框彈出", HOOP.x - 27.0, RIM_Y - 43.0, Color("ffb0b9"))
 		show_message("差一點！調整蓄力再試一次。", 1.4)
-		make_loose_ball(HOOP.x - 12.0, RIM_Y + 12.0, -150.0, -205.0)
 
 
-func resolve_opponent_shot() -> void:
-	var calico: Dictionary = GameData.character_info("calico")
-	var human_chance := GameRules.shot_chance(flight.charge, flight.distance, float(calico["stats"][1]), float(calico["stats"][2]), 0.0, 0.0)
-	var shot_chance: float = human_chance if mode == "duo" else float(current_mode()["opponent_accuracy"])
-	var made := randf() < shot_chance
+func resolve_opponent_shot(made: bool) -> void:
 	if made:
 		var points := GameRules.points_for(flight.distance)
 		break_combo()
@@ -620,9 +659,7 @@ func resolve_opponent_shot() -> void:
 		burst(HOOP.x, RIM_Y, opponent_color().lightened(0.18), 15)
 		add_floater("%s +%d" % [opponent_display_name(), points], HOOP.x - 42.0, RIM_Y - 50.0, opponent_color().lightened(0.24))
 		show_message("%s命中 %d 分" % [opponent_display_name(), points], 1.4)
-		reset_after_score("player")
 	else:
-		make_loose_ball(HOOP.x - 12.0, RIM_Y + 12.0, -120.0, -180.0)
 		show_message("對手投丟了，快搶籃板！", 1.2)
 
 
@@ -640,20 +677,23 @@ func make_loose_ball(x: float, y: float, vx: float, vy: float) -> void:
 func set_possession(who: String) -> void:
 	possession = who
 	ball.loose = false
+	ball.in_flight = false
+	ball.scored = false
 	ball.bounces = 0
 	ball.vx = 0.0
 	ball.vy = 0.0
+	ball.trail.clear()
 	if who == "player":
-		ball.x = player.x + player.facing * 26.0
-		ball.y = player.y - 75.0
+		_dribble_with(player)
 	else:
-		ball.x = opponent.x - opponent.facing * 25.0
-		ball.y = opponent.y - 75.0
+		_dribble_with(opponent)
 
 
 func reset_after_score(next_possession: String) -> void:
 	ball.in_flight = false
 	ball.loose = false
+	ball.scored = false
+	pending_reset_in = 0.0
 	player.reset(302.0, 565.0, 1.0)
 	opponent.reset(570.0, 557.0, -1.0)
 	set_possession(next_possession)
@@ -738,10 +778,8 @@ func trigger_skill(skill_name: String) -> void:
 		player.dash = 0.6
 		player.x = clampf(HOOP.x - 165.0, 104.0, 702.0)
 		burst(player.x, player.y - 70.0, Color("ff9c4a"), 20)
-		if possession == "player" and not ball.in_flight:
-			flight.configure("player", Vector2(player.x + 25.0, player.y - 78.0), Vector2(HOOP.x, RIM_Y - 13.0), 100.0, 0.68, 0.74, absf(HOOP.x - player.x))
-			ball.in_flight = true
-			possession = "none"
+		if possession == "player" and not ball.in_flight and not ball.loose:
+			_launch_shot("player", Vector2(player.x - player.facing * 52.0, player.y - 100.0), 0.72, absf(HOOP.x - player.x), 0.008, true)
 		show_message("🔥 火焰灌籃！", 1.5)
 	elif skill_name == GameData.SKILL_STEPBACK:
 		player.x = clampf(player.x - 110.0, 104.0, 702.0)
@@ -757,7 +795,7 @@ func trigger_skill(skill_name: String) -> void:
 		add_floater("幻影消失！", player.x, player.y - 122.0, Color("e0c8ff"))
 		show_message("🌀 幻影變向！防守失去目標", 1.5)
 	else:
-		if possession == "player" and not ball.in_flight:
+		if possession == "player" and not ball.in_flight and not ball.loose:
 			charging = true
 			release_shot(0.72)
 		burst(player.x, player.y - 84.0, Color("ff9de8"), 18)
@@ -813,6 +851,9 @@ func reset_game(keep_mode: bool = true) -> void:
 	opponent.reset(570.0, 557.0, -1.0)
 	ball.reset(329.0, 487.0)
 	flight = ShotFlight.new()
+	visual_time = 0.0
+	pending_reset_in = 0.0
+	pending_possession = ""
 	charging = false
 	charging_shooter = ""
 	charge = 0.16
@@ -879,6 +920,18 @@ func player_texture_for_selection() -> Texture2D:
 			return boss_opponent_texture
 		_:
 			return player_texture
+
+
+func player_court_texture() -> Texture2D:
+	match player_character:
+		"calico":
+			return opponent_play_texture
+		"orange":
+			return story_opponent_play_texture
+		"boss":
+			return boss_opponent_play_texture
+		_:
+			return player_play_texture
 
 
 func player_display_name() -> String:
@@ -1095,6 +1148,16 @@ func opponent_texture_for_mode() -> Texture2D:
 			return opponent_texture
 
 
+func opponent_court_texture() -> Texture2D:
+	match GameData.opponent_id(mode):
+		"orange":
+			return story_opponent_play_texture
+		"boss":
+			return boss_opponent_play_texture
+		_:
+			return opponent_play_texture
+
+
 func opponent_display_name() -> String:
 	return String(GameData.opponent_info(mode)["name"])
 
@@ -1252,21 +1315,28 @@ func draw_hoop() -> void:
 
 
 func draw_aim_guide() -> void:
-	if not charging or possession != "player":
+	if not charging:
 		return
-	var start := Vector2(player.x + player.facing * 26.0, player.y - 78.0)
-	var control := Vector2((start.x + HOOP.x) * 0.5, start.y - 160.0 - charge * 42.0)
+	var actor := player if charging_shooter == "player" else opponent
+	if possession != charging_shooter:
+		return
+	var start := Vector2(actor.x - actor.facing * 52.0, actor.y - 100.0)
+	var flight_time := GameRules.shot_flight_time(absf(HOOP.x - actor.x))
+	var velocity := GameRules.ballistic_velocity(start, Vector2(HOOP.x, RIM_Y - 6.0), GameBall.GRAVITY, flight_time)
+	velocity *= GameRules.shot_power(charge)
 	var previous := start
-	for i in range(1, 19):
-		var t := float(i) / 18.0
-		var point := start.lerp(control, t).lerp(control.lerp(Vector2(HOOP.x, RIM_Y - 12.0), t), t)
+	for i in range(1, 22):
+		var t := float(i) * 0.055
+		var point := Vector2(start.x + velocity.x * t, start.y + velocity.y * t + 0.5 * GameBall.GRAVITY * t * t)
+		if point.y > FLOOR_Y - 8.0:
+			break
 		if i % 2 == 0:
-			draw_line(previous, point, Color(0.73, 0.88, 1.0, 0.55), 2.0)
+			draw_line(previous, point, Color(0.73, 0.88, 1.0, 0.62), 2.0)
 		previous = point
 	draw_circle(HOOP, 34.0, Color(0.35, 0.92, 0.64, 0.10))
-	var meter_rect := Rect2(player.x - 48.0, player.y - 170.0, 96.0, 9.0)
+	var meter_rect := Rect2(actor.x - 48.0, actor.y - 170.0, 96.0, 9.0)
 	panel(meter_rect, Color(0.02, 0.05, 0.12, 0.86), Color("47628f"), 4.0)
-	draw_rect(Rect2(meter_rect.position + Vector2(2.0, 2.0), Vector2(92.0 * charge, 5.0)), Color("67d79b"))
+	draw_rect(Rect2(meter_rect.position + Vector2(2.0, 2.0), Vector2(92.0 * charge, 5.0)), Color("67d79b") if GameRules.is_sweet(charge) else Color("ffd16b"))
 	centered_text("POWER", Vector2(meter_rect.position.x + 48.0, meter_rect.position.y - 6.0), 80.0, 8, Color(0.86, 0.95, 0.88, 0.9))
 
 
@@ -1287,7 +1357,7 @@ func draw_cat(position: Vector2, team: String, facing: float, bob: float, active
 	var bounce := sin(bob) * (2.4 if active else 1.2)
 	draw_set_transform(drawing_offset + (position + Vector2(0.0, bounce)) * drawing_scale, 0.0, Vector2(facing * drawing_scale, drawing_scale))
 	if generated_art:
-		var cat_texture: Texture2D = player_texture_for_selection() if is_blue else opponent_texture_for_mode()
+		var cat_texture: Texture2D = player_court_texture() if is_blue else opponent_court_texture()
 		draw_oval(Vector2(0.0, 3.0), 78.0, 13.0, Color(0.02, 0.03, 0.08, 0.42))
 		draw_texture_rect(cat_texture, Rect2(-112.0, -240.0, 224.0, 240.0), false, Color.WHITE)
 		if active:
@@ -1334,14 +1404,22 @@ func draw_cat(position: Vector2, team: String, facing: float, bob: float, active
 
 
 func draw_ball() -> void:
-	if generated_art and not ball.in_flight and not ball.loose:
-		return
 	var p := ball.pos()
-	draw_circle(p, 28.0, Color(1.0, 0.58, 0.20, 0.08))
-	draw_circle(p, 15.0, Color("ed7f29"))
-	draw_arc(p, 14.0, -0.9, 0.9, 16, Color(0.38, 0.13, 0.08, 0.75), 1.7)
-	draw_arc(p, 14.0, PI - 0.9, PI + 0.9, 16, Color(0.38, 0.13, 0.08, 0.75), 1.7)
-	draw_arc(p, 14.0, 0.2, PI - 0.2, 16, Color(0.38, 0.13, 0.08, 0.75), 1.7)
+	var height := clampf((FLOOR_Y - p.y) / 280.0, 0.0, 1.0)
+	var shadow_scale: float = clampf(1.0 - height * 0.62, 0.28, 1.0)
+	draw_oval(Vector2(p.x, FLOOR_Y - 6.0), 17.0 * shadow_scale, 6.0 * shadow_scale, Color(0.02, 0.03, 0.08, 0.32 * shadow_scale))
+	if ball.in_flight or ball.loose:
+		for i in ball.trail.size():
+			var alpha: float = float(i + 1) / float(maxi(ball.trail.size(), 1)) * 0.28
+			draw_circle(ball.trail[i], 5.0 + float(i) * 0.4, Color(1.0, 0.62, 0.22, alpha))
+	draw_set_transform(drawing_offset + p * drawing_scale, ball.spin, Vector2(drawing_scale, drawing_scale))
+	draw_circle(Vector2.ZERO, 28.0, Color(1.0, 0.58, 0.20, 0.14 if ball.in_flight else 0.08))
+	draw_circle(Vector2.ZERO, GameBall.RADIUS, Color("ed7f29"))
+	draw_circle(Vector2(-4.0, -5.0), 5.0, Color(1.0, 0.82, 0.45, 0.35))
+	draw_arc(Vector2.ZERO, 14.0, -0.9, 0.9, 16, Color(0.38, 0.13, 0.08, 0.78), 1.7)
+	draw_arc(Vector2.ZERO, 14.0, PI - 0.9, PI + 0.9, 16, Color(0.38, 0.13, 0.08, 0.78), 1.7)
+	draw_arc(Vector2.ZERO, 14.0, 0.2, PI - 0.2, 16, Color(0.38, 0.13, 0.08, 0.78), 1.7)
+	draw_set_transform(drawing_offset, 0.0, Vector2(drawing_scale, drawing_scale))
 
 
 func draw_mobile_controls() -> void:
