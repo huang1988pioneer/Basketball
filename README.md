@@ -2,7 +2,7 @@
 
 一款使用 Godot 4 製作的可玩 2D 街頭籃球遊戲原型。玩家可切換四名喵星球員，在霓虹屋頂球場迎戰不同模式的 AI 對手，也能啟用本機雙人對戰。
 
-目前版本：**v1.1.0**
+目前版本：**v1.1.1**
 
 ![遊戲畫面](artifacts/basketball-final-game.png)
 
@@ -45,7 +45,7 @@ godot --path .
 
 ## 跨平台輸出
 
-最新本機輸出位於 `dist/v1.1.0/`：Windows x86_64 `.exe`、macOS universal `.zip`、Android `.apk`，以及可在 Xcode 開啟的 iOS 專案 `.zip`。`Basketball-v1.1.0-android.apk` 使用本機 debug keystore 簽署，可供裝置測試；`Basketball-v1.1.0-android-unsigned.apk` 保留未簽署版本，正式上架仍需改用自己的 release keystore。iOS 目前輸出 Xcode 專案，需在已接受 Xcode license 並配置 Apple signing 後再封裝 IPA。
+最新本機輸出位於 `dist/v1.1.1/`：Windows x86_64 `.exe`、macOS universal `.zip`、Android `.apk`，以及可在 Xcode 開啟的 iOS 專案 `.zip`。`Basketball-v1.1.1-android.apk` 使用本機 debug keystore 簽署，可供裝置測試；`Basketball-v1.1.1-android-unsigned.apk` 保留未簽署版本，正式上架仍需改用自己的 release keystore。iOS 目前輸出 Xcode 專案，需在已接受 Xcode license 並配置 Apple signing 後再封裝 IPA。
 
 ```bash
 ./tools/export_release.sh

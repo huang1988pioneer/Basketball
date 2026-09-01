@@ -12,7 +12,7 @@
   const W = canvas.width;
   const H = canvas.height;
   const TAU = Math.PI * 2;
-  const VERSION = "1.1.0";
+  const VERSION = "1.1.1";
   const COMBO_WINDOW = 4;
   const STEAL_RANGE = 145;
   const SKILL_FIRE = "火焰灌籃";

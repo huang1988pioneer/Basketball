@@ -1,7 +1,7 @@
 class_name GameData
 extends Object
 
-const VERSION := "1.1.0"
+const VERSION := "1.1.1"
 const DESIGN_SIZE := Vector2(1280.0, 820.0)
 const COURT_RECT := Rect2(24.0, 104.0, 846.0, 586.0)
 const WORLD_RECT := Rect2(40.0, 184.0, 814.0, 458.0)
