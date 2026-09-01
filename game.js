@@ -12,6 +12,14 @@
   const W = canvas.width;
   const H = canvas.height;
   const TAU = Math.PI * 2;
+  const VERSION = "1.1.0";
+  const COMBO_WINDOW = 4;
+  const STEAL_RANGE = 145;
+  const SKILL_FIRE = "火焰灌籃";
+  const SKILL_STEPBACK = "後撤步三分";
+  const SKILL_DASH = "幻影變向";
+  const SKILL_METEOR = "流星投籃";
+  const SKILL_COSTS = { [SKILL_FIRE]: 34, [SKILL_STEPBACK]: 28, [SKILL_DASH]: 22, [SKILL_METEOR]: 40 };
   const floor = { horizon: 292, baseline: 575, left: 35, right: 1245 };
   const hoop = { x: 1072, y: 345, rimY: 355 };
 
@@ -141,11 +149,11 @@
   };
 
   const modeData = {
-    quick: { name: "快速比賽", duration: 90, target: 11, opponentAccuracy: .46, opponentSpeed: 150, label: "快速比賽　•　先得 11 分" },
-    story: { name: "故事模式", duration: 105, target: 15, opponentAccuracy: .50, opponentSpeed: 158, label: "故事模式　•　先得 15 分" },
-    challenge: { name: "挑戰模式", duration: 60, target: 18, opponentAccuracy: .55, opponentSpeed: 168, label: "挑戰模式　•　60 秒得 18 分" },
-    boss: { name: "Boss 挑戰", duration: 120, target: 21, opponentAccuracy: .67, opponentSpeed: 185, label: "Boss 挑戰　•　決戰 21 分" },
-    duo: { name: "雙人對戰", duration: 90, target: 11, opponentAccuracy: .46, opponentSpeed: 150, label: "雙人對戰　•　先得 11 分" },
+    quick: { name: "快速比賽", duration: 90, target: 11, opponentAccuracy: .46, opponentSpeed: 150, shotBonus: .04, label: "快速比賽　•　先得 11 分" },
+    story: { name: "故事模式", duration: 105, target: 15, opponentAccuracy: .50, opponentSpeed: 158, shotBonus: .02, label: "故事模式　•　先得 15 分" },
+    challenge: { name: "挑戰模式", duration: 60, target: 18, opponentAccuracy: .55, opponentSpeed: 168, shotBonus: -.02, label: "挑戰模式　•　60 秒得 18 分" },
+    boss: { name: "Boss 挑戰", duration: 120, target: 21, opponentAccuracy: .67, opponentSpeed: 185, shotBonus: -.05, label: "Boss 挑戰　•　決戰 21 分" },
+    duo: { name: "雙人對戰", duration: 90, target: 11, opponentAccuracy: .46, opponentSpeed: 150, shotBonus: .04, label: "雙人對戰　•　先得 11 分" },
   };
 
   const skyline = [
@@ -160,6 +168,17 @@
   function clamp(value, min, max) { return Math.max(min, Math.min(max, value)); }
   function lerp(a, b, t) { return a + (b - a) * t; }
   function distance(a, b) { return Math.hypot(a.x - b.x, a.y - b.y); }
+  function compactLive(items) {
+    let write = 0;
+    for (let i = 0; i < items.length; i += 1) {
+      if (items[i].life > 0) {
+        if (write !== i) items[write] = items[i];
+        write += 1;
+      }
+    }
+    items.length = write;
+  }
+  function isSweet(charge) { return charge >= .61 && charge <= .83; }
   function formatTime(seconds) {
     const safe = Math.max(0, Math.ceil(seconds));
     return `${String(Math.floor(safe / 60)).padStart(2, "0")}:${String(safe % 60).padStart(2, "0")}`;
@@ -344,6 +363,8 @@
     updateLooseBall(dt);
     updateEffects(dt);
     updateOpponentAI(dt);
+    const totalDuration = Math.max(1, modeData[state.mode].duration);
+    state.period = Math.max(1, Math.min(4, Math.floor(((totalDuration - Math.max(0, state.timeLeft)) / totalDuration) * 4) + 1));
 
     if (state.timeLeft <= 0) endGame("time");
     const target = modeData[state.mode].target;
@@ -519,11 +540,11 @@
 
   function updateEffects(dt) {
     for (const p of state.particles) { p.life -= dt; p.x += p.vx * dt; p.y += p.vy * dt; p.vy += p.gravity * dt; }
-    state.particles = state.particles.filter((p) => p.life > 0);
     for (const f of state.floaters) { f.life -= dt; f.y -= dt * 32; }
-    state.floaters = state.floaters.filter((f) => f.life > 0);
     for (const r of state.rings) { r.life -= dt; r.radius += dt * r.speed; }
-    state.rings = state.rings.filter((r) => r.life > 0);
+    compactLive(state.particles);
+    compactLive(state.floaters);
+    compactLive(state.rings);
   }
 
   function setPossession(who) {
@@ -596,9 +617,8 @@
     state.shotShooter = "player";
     state.possession = null;
     state.shotCooldown = .45;
-    state.nextShotBonus = 0;
-    addFloater(charge >= .61 && charge <= .83 ? "甜蜜點！" : "出手！", player.x, player.y - 129, charge >= .61 && charge <= .83 ? "#9dffc9" : "#d9e8ff");
-    playTone(charge >= .61 && charge <= .83 ? 590 : 410, .09, "triangle", .028);
+    addFloater(isSweet(charge) ? "甜蜜點！" : "出手！", player.x, player.y - 129, isSweet(charge) ? "#9dffc9" : "#d9e8ff");
+    playTone(isSweet(charge) ? 590 : 410, .09, "triangle", .028);
   }
 
   function shootForOpponent() {
@@ -624,13 +644,14 @@
     const data = characterData[state.character] || characterData.white;
     const shotBonus = (data.stats[1] - 76) * .0035;
     const threeBonus = flight.distance > 540 ? (data.stats[2] - 68) * .0025 : 0;
-    const chance = clamp(.18 + sweet * .68 + distanceBonus * .08 + shotBonus + threeBonus + state.nextShotBonus, .08, .96);
+    const chance = clamp(.18 + sweet * .68 + distanceBonus * .08 + shotBonus + threeBonus + state.nextShotBonus + (modeData[state.mode].shotBonus || 0), .08, .96);
     const made = sweet > .84 || Math.random() < chance;
+    state.nextShotBonus = 0;
     if (made) {
       const points = flight.distance > 540 ? 3 : 2;
       state.combo += 1;
       state.bestCombo = Math.max(state.bestCombo, state.combo);
-      state.comboTimer = 4;
+      state.comboTimer = COMBO_WINDOW;
       state.score.player += points;
       state.energy = clamp(state.energy + 12, 0, 100);
       state.screenShake = .24;
@@ -699,7 +720,7 @@
   function attemptSteal() {
     if (!state.running) { showToast("先開始比賽！", 1100); return; }
     if (state.possession !== "opponent") { showToast("現在是你的球權，往籃框切入！", 1100); return; }
-    const near = distance(state.player, state.opponent) < 145;
+    const near = distance(state.player, state.opponent) < STEAL_RANGE;
     if (!near) {
       const opponent = opponentPresentation[state.mode] || opponentPresentation.quick;
       showToast(`靠近${opponent.name}再按抄球`, 1200);
@@ -733,7 +754,7 @@
       ui.shotButton.classList.remove("pressed");
       ui.shotHint.textContent = "按住蓄力";
     }
-    const near = distance(state.player, state.opponent) < 145;
+    const near = distance(state.player, state.opponent) < STEAL_RANGE;
     if (!near) { showToast("P2 靠近 P1 再按 / 抄球", 1200); return; }
     state.opponent.dash = .18;
     const defenseStat = characterData.calico?.stats?.[3] ?? 52;
@@ -767,14 +788,17 @@
 
   function triggerSkill(skillName) {
     if (!state.running) { showToast("先開始比賽！", 1100); return; }
-    const costs = { "火焰灌籃": 34, "後撤步三分": 28, "幻影變向": 22, "流星投籃": 40 };
-    const cost = costs[skillName] || 25;
+    if (state.possession !== "player" && [SKILL_FIRE, SKILL_STEPBACK, SKILL_METEOR].includes(skillName)) {
+      showToast("先把球搶回來才能施放這招", 1200);
+      return;
+    }
+    const cost = SKILL_COSTS[skillName] || 25;
     if (state.energy < cost) { showToast(`能量不足，需要 ${cost}%`, 1200); return; }
     state.energy -= cost;
     state.skillFlash = skillName;
     state.skillFlashTime = .75;
     const p = state.player;
-    if (skillName === "火焰灌籃") {
+    if (skillName === SKILL_FIRE) {
       p.dash = .6;
       p.x = clamp(hoop.x - 170, 130, 1015);
       burst(p.x, p.y - 70, "#ff9e4c", 22);
@@ -786,7 +810,7 @@
       }
       showToast("🔥 火焰灌籃！", 1500);
       playTone(160, .2, "sawtooth", .035);
-    } else if (skillName === "後撤步三分") {
+    } else if (skillName === SKILL_STEPBACK) {
       p.x = clamp(p.x - 110, 120, 1015);
       p.dash = .25;
       state.nextShotBonus = .2;
@@ -794,7 +818,7 @@
       addFloater("三分加成 +25%", p.x, p.y - 123, "#9fe2ff");
       showToast("💠 後撤步完成！下一球命中率提升", 1700);
       playTone(690, .16, "triangle", .035);
-    } else if (skillName === "幻影變向") {
+    } else if (skillName === SKILL_DASH) {
       p.dash = .65;
       p.x = clamp(p.x + p.facing * 160, 120, 1015);
       burst(p.x, p.y - 56, "#c59bff", 18);
@@ -802,7 +826,11 @@
       showToast("🌀 幻影變向！防守失去目標", 1500);
       playTone(530, .16, "sine", .03);
     } else {
-      if (state.possession === "player" && !state.ball.inFlight) releaseShot(.72);
+      if (state.possession === "player" && !state.ball.inFlight) {
+        state.charging = true;
+        state.chargingShooter = "player";
+        releaseShot(.72);
+      }
       showToast("☄️ 流星投籃！", 1500);
       burst(p.x, p.y - 85, "#ff9de8", 19);
       playTone(840, .2, "triangle", .04);
@@ -900,6 +928,7 @@
       $(id).textContent = data.stars[index];
     });
     showToast(`${data.name} 已上場`, 900, false);
+    draw();
   }
 
   function updateShotMeter() {
@@ -972,7 +1001,7 @@
 
   function drawComboBadge() {
     if (!state.running || state.combo < 2) return;
-    const progress = clamp(state.comboTimer / 4, 0, 1);
+    const progress = clamp(state.comboTimer / COMBO_WINDOW, 0, 1);
     const x = 54;
     const y = 202;
     ctx.save();
@@ -1223,10 +1252,10 @@
     if (event.key === "Enter" && state.mode === "duo") beginOpponentShot();
     if (event.key === "/" && state.mode === "duo") attemptOpponentSteal();
     if (event.key.toLowerCase() === "x") attemptSteal();
-    if (event.key.toLowerCase() === "q") triggerSkill("火焰灌籃");
-    if (event.key.toLowerCase() === "e") triggerSkill("後撤步三分");
-    if (event.key.toLowerCase() === "r") triggerSkill("幻影變向");
-    if (event.key.toLowerCase() === "f") triggerSkill("流星投籃");
+    if (event.key.toLowerCase() === "q") triggerSkill(SKILL_FIRE);
+    if (event.key.toLowerCase() === "e") triggerSkill(SKILL_STEPBACK);
+    if (event.key.toLowerCase() === "r") triggerSkill(SKILL_DASH);
+    if (event.key.toLowerCase() === "f") triggerSkill(SKILL_METEOR);
   });
   window.addEventListener("keyup", (event) => {
     state.keys[event.key] = false;
@@ -1291,10 +1320,14 @@
   function loop(time) {
     const dt = state.lastTime ? Math.min(.04, (time - state.lastTime) / 1000) : 0;
     state.lastTime = time;
+    const idle = !state.running && !state.gameOver && state.skillFlashTime <= 0 && state.particles.length === 0 && state.floaters.length === 0 && state.rings.length === 0;
     update(dt);
-    draw();
+    if (!idle || state.charging) draw();
     requestAnimationFrame(loop);
   }
+
+  const livePill = document.querySelector(".live-pill");
+  if (livePill) livePill.innerHTML = `<i></i> 遊戲原型 v${VERSION}`;
 
   resetGame(false);
   requestAnimationFrame(loop);
